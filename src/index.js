@@ -19,12 +19,13 @@ async function run() {
 
     const githubToken = core.getInput('github-token')
     const octokit = github.getOctokit(githubToken)
-    const releaseTag = await octokit.rest.tags.get({
-      owner: github.context.repo.owner,
-      repo: github.context.repo.repo,
-      ref: `releases/tag/v${releaseNotes.release_version}`
-    })
-    core.info(`Major tag: ${releaseTag}`)
+    console.log(octokit.rest)
+    // const releaseTag = await octokit.rest.tags.get({
+    //   owner: github.context.repo.owner,
+    //   repo: github.context.repo.repo,
+    //   ref: `releases/tag/v${releaseNotes.release_version}`
+    // })
+    // core.info(`Major tag: ${releaseTag}`)
 
     if (!isDryRun) {
       return
