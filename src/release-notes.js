@@ -22,7 +22,7 @@ function parse(file) {
   if (version !== '') {
     return {
       release_version: version,
-      release_notes: releaseNotes.join('\n')
+      release_notes: releaseNotes.join('\n').trim()
     }
   }
 }

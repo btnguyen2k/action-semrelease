@@ -4,13 +4,13 @@ const parseReleaseNotes = require('./release-notes')
 // most @actions toolkit packages have async methods
 async function run() {
   try {
-    const isDryRun = core.getInput('dry-run')
+    const isDryRun = core.getInput('dry-run') || 'false'
     const releaseNotes = parseReleaseNotes()
     if (releaseNotes === undefined) {
       throw new Error('No release version/notes found')
     }
-    if (isDryRun === 'true') {
-      core.info(`Release version: ${releaseNotes.version}`)
+    if (isDryRun.toLowerCase() === 'true') {
+      core.info(`Release version: ${releaseNotes.release_version}`)
       core.info(`Release notes:\n${releaseNotes.release_notes}`)
       return
     }
