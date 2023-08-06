@@ -13,6 +13,13 @@ on:
 jobs:
   ensure-dist:
     runs-on: ubuntu-latest
+    if: |
+      (
+        (github.event.workflow_run.event == 'pull_request' && github.event.pull_request.merged == true) ||
+        github.event.workflow_run.event == 'push'
+      ) &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.ref == 'refs/heads/main'
     permissions:
       contents: write
     steps:
@@ -26,7 +33,7 @@ jobs:
         run: npm ci
       - name: Rebuild the dist/ directory
         run: npm run prepare
-      - name: Compare the expected and actual dist/ directories
+      - name: Sync dist/ directories
         run: |
           git diff --ignore-space-at-eol dist/
           if [ "$(git diff --ignore-space-at-eol dist/ | wc -l)" -gt "0" ]; then
