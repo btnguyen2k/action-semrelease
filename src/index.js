@@ -24,7 +24,8 @@ async function run() {
       repo: github.context.repo.repo,
       ref: `releases/tag/v${releaseNotes.release_version}`
     })
-    core.info(`Major tag: ${releaseTag}`)
+    console.log(releaseTag)
+    // core.info(`Major tag: ${releaseTag}`)
 
     if (!isDryRun) {
       return
