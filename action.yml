@@ -1,13 +1,16 @@
-name: 'Wait'
-description: 'Wait a designated number of milliseconds'
+name: 'SemRelease'
+author: 'Thanh Nguyen <btnguyen2k(at)gmail(dot)com>'
+description: 'Publish releases using tags, following sematic versioning'
 inputs:
-  milliseconds:  # id of input
-    description: 'number of milliseconds to wait'
-    required: true
-    default: '1000'
+  dry-run:
+    description: 'dry run flag'
+    required: false
+    default: 'false'
 outputs:
-  time: # output will be available to future steps
-    description: 'The current time after waiting'
+  releaseVersion:
+    description: 'The release version string'
+  releaseNotes:
+    description: 'The release notes'
 runs:
   using: 'node16'
   main: 'dist/index.js'

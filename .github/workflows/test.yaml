@@ -55,4 +55,4 @@ jobs:
       - name: Run Action
         uses: ./
         with:
-          milliseconds: 1000
+          dry-run: true

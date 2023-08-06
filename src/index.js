@@ -1,20 +1,24 @@
-const core = require('@actions/core');
-const wait = require('./wait');
+const core = require('@actions/core')
+const parseReleaseNotes = require('./release-notes')
 
 // most @actions toolkit packages have async methods
 async function run() {
   try {
-    const ms = core.getInput('milliseconds');
-    core.info(`Waiting ${ms} milliseconds ...`);
-
-    core.debug((new Date()).toTimeString()); // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
-    await wait(parseInt(ms));
-    core.info((new Date()).toTimeString());
-
-    core.setOutput('time', new Date().toTimeString());
+    const isDryRun = core.getInput('dry-run')
+    const releaseNotes = parseReleaseNotes()
+    if (releaseNotes === undefined) {
+      throw new Error('No release version/notes found')
+    }
+    if (isDryRun === 'true') {
+      core.info(`Release version: ${releaseNotes.version}`)
+      core.info(`Release notes:\n${releaseNotes.release_notes}`)
+      return
+    }
+    core.setOutput('releaseVersion', releaseNotes.release_version)
+    core.setOutput('releaseNotes', releaseNotes.release_notes)
   } catch (error) {
-    core.setFailed(error.message);
+    core.setFailed(error.message)
   }
 }
 
-run();
+run()
