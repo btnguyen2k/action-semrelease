@@ -55,4 +55,5 @@ jobs:
       - name: Run Action
         uses: ./
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
