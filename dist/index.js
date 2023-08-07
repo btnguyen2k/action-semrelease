@@ -9883,6 +9883,8 @@ const outputResult = 'result'
 async function run() {
   try {
     const isDryRun = (core.getInput(inputDryRun) || 'false').toLowerCase() === 'true'
+    console.log(`Dry-run mode: ${isDryRun}`)
+    console.log(`GitHub context: ${JSON.stringify(github.context, null, 2)}`)
 
     const releaseNotes = utils.parseReleaseNotes()
     if (releaseNotes === undefined) {
@@ -9901,20 +9903,29 @@ async function run() {
     core.info(`Release version: ${releaseNotes.release_version}`)
     core.setOutput(outputReleaseVersion, releaseNotes.release_version)
     core.info(`Creating tag ${tagName}...`)
-    if (!isDryRun) {
-      core.warning(`Dry-run mode, skipped.`)
+    const params = {
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      tag: tagName,
+      message: `Release ${tagName}`,
+      object: github.context.sha,
+      type: 'commit',
+    }
+    if (isDryRun) {
+      core.info(`[DRY-RUN], creating tag: ${JSON.stringify(params, null, 2)}`)
     } else {
-
+      await octokit.rest.git.createTag(params)
     }
 
     core.info(`Release notes:\n${releaseNotes.release_notes}`)
     core.setOutput(outputReleaseNotes, releaseNotes.release_notes)
     core.info(`Creating release ${tagName}...`)
-    if (!isDryRun) {
+    if (isDryRun) {
       core.warning(`Dry-run mode, skipped.`)
     }
   } catch (error) {
     core.setFailed(error.message)
+    console.error(error)
   }
 }
 

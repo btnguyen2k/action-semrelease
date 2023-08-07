@@ -46,7 +46,8 @@ const reSemver = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?
 function parse(file) {
   const releaseNotes = []
   let enterReleaseNotes = false
-  let version = ''
+  const version = {
+  }
   const data = fs.readFileSync(file, {encoding: 'utf8'}).toString()
   const lines = data.split(/\r?\n/)
   for (const line of lines) {
@@ -56,7 +57,11 @@ function parse(file) {
         break
       }
       enterReleaseNotes = true
-      version = matches[1]
+      version.semver = matches[1]
+      version.major = matches[2]
+      version.minor = matches[3]
+      version.patch = matches[4]
+      version.prerelease = matches[5] || ''
     } else if (enterReleaseNotes) {
       releaseNotes.push(line)
     }

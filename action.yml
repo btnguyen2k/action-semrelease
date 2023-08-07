@@ -6,7 +6,15 @@ inputs:
     description: 'GitHub token with access to your repository scoped in as a secret'
     required: true
   dry-run:
-    description: 'dry run flag'
+    description: 'Dry run flag'
+    required: false
+    default: 'false'
+  tag-major-release:
+    description: 'If set, a major release tag will be created, e.g. v1'
+    required: false
+    default: 'true'
+  tag-minor-release:
+    description: 'If set, a minor release tag will be created, e.g. v1.2'
     required: false
     default: 'false'
 outputs:
@@ -15,7 +23,7 @@ outputs:
   releaseNotes:
     description: 'The release notes'
   result:
-    description: 'Action result, either ERROR, SKIPPED, or SUCCESS'
+    description: 'Action result, either FAILED, SKIPPED, or SUCCESS'
 runs:
   using: 'node16'
   main: 'dist/index.js'
