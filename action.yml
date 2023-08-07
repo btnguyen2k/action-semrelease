@@ -1,6 +1,9 @@
 name: 'SemRelease'
 author: 'Thanh Nguyen <btnguyen2k(at)gmail(dot)com>'
 description: 'Publish releases using tags, following sematic versioning'
+branding:
+  icon: 'git-pull-request'
+  color: 'red'
 inputs:
   github-token:
     description: 'GitHub token with access to your repository scoped in as a secret'
