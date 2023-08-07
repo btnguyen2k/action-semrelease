@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/btnguyen2k/action-semver.git"
+    "url": "git+https://github.com/btnguyen2k/action-semrelease.git"
   },
   "keywords": [
     "GitHub",
