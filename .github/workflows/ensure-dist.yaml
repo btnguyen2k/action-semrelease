@@ -26,7 +26,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: dummy
+      - name: Debug
         run: |
           echo github.event.workflow_run.event: ${{ github.event.workflow_run.event }}
           echo github.event.pull_request.merged: ${{ github.event.pull_request.merged }}
