@@ -112,9 +112,9 @@ async function run() {
 
     core.setOutput(outputResult, 'SUCCESS')
   } catch (error) {
+    console.log(error)
     core.setOutput(outputResult, 'FAILED')
     core.setFailed(`❌ ${error.message}`)
-    console.log(error)
   }
 }
 
