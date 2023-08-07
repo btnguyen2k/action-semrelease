@@ -74,15 +74,33 @@ function parse(file) {
   }
 }
 
-const releaseNoteFilenames = [
+const releaseNotesFilenames = [
   "RELEASE-NOTES.md", "RELEASE_NOTES.MD", "RELEASE-NOTES",
   "RELEASE_NOTES.md", "RELEASE_NOTES.MD", "RELEASE_NOTES",
   "release-notes.md", "release-notes",
   "release_notes.md", "release_notes",
 ]
 
+const changelogFilenames = [
+  "CHANGELOG.md", "CHANGELOG.MD", "CHANGELOG",
+  "CHANGE-LOG.md", "CHANGE-LOG.MD", "CHANGE-LOG",
+  "CHANGE_LOG.md", "CHANGE_LOG.MD", "CHANGE_LOG",
+  "changelog.md", "changelog",
+  "change-log.md", "change-log",
+  "change_log.md", "change_log",
+]
+
 function parseReleaseNotes() {
-  for (const file of releaseNoteFilenames) {
+  for (const file of releaseNotesFilenames) {
+    if (fs.existsSync(file)) {
+      const result = parse(file)
+      if (result === undefined) {
+        break
+      }
+      return result
+    }
+  }
+  for (const file of changelogFilenames) {
     if (fs.existsSync(file)) {
       return parse(file)
     }
