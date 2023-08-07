@@ -6,12 +6,12 @@
   "scripts": {
     "lint": "eslint .",
     "prepare": "ncc build src/index.js -o dist --source-map --license licenses.txt",
-    "test": "jest --verbose --coverage",
+    "test": "jest --coverage",
     "all": "npm run lint && npm run prepare && npm run test"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/btnguyen2k/action-semver.git"
+    "url": "git+https://github.com/btnguyen2k/action-semrelease.git"
   },
   "keywords": [
     "GitHub",
