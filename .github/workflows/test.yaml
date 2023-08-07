@@ -7,17 +7,8 @@ on:
     branches: [ '*' ]
 
 jobs:
-  # if_merged
-  if_merged:
-    if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "Pull request merged!"
-
   # lint
   lint:
-    if: github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -33,7 +24,6 @@ jobs:
 
   # unit tests
   units:
-    if: github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -54,7 +44,6 @@ jobs:
 
   # test action works running from the graph
   test:
-    if: github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
