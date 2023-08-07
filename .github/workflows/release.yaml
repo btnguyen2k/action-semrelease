@@ -27,5 +27,5 @@ jobs:
       - name: SemRelease
         uses: btnguyen2k/action-semrelease@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
