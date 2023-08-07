@@ -2,7 +2,6 @@ name: "units-test"
 
 on:
   pull_request:
-    types: [opened, reopened, closed]
     branches: [ '*' ]
   push:
     branches: [ '*' ]
