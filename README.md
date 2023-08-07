@@ -1,116 +1,50 @@
-# Create a JavaScript Action
+# SemRelease
 
-<p align="center">
-  <a href="https://github.com/actions/javascript-action/actions"><img alt="javscript-action status" src="https://github.com/actions/javascript-action/workflows/units-test/badge.svg"></a>
-</p>
+[![Release](https://img.shields.io/github/release/btnguyen2k/action-semrelease.svg?style=flat-square)](RELEASE-NOTES.md)
+[![Actions Status](https://github.com/btnguyen2k/action-semrelease/actions/workflows/test.yaml/badge.svg)](https://github.com/btnguyen2k/action-semrelease/actions)
+[![codecov](https://codecov.io/gh/btnguyen2k/action-semrelease/branch/main/graph/badge.svg)](https://codecov.io/gh/btnguyen2k/action-semrelease)
 
-Use this template to bootstrap the creation of a JavaScript action.:rocket:
-
-This template includes tests, linting, a validation workflow, publishing, and versioning guidance.
-
-If you are new, there's also a simpler introduction.  See the [Hello World JavaScript Action](https://github.com/actions/hello-world-javascript-action)
-
-## Create an action from this template
-
-Click the `Use this Template` and provide the new repo details for your action
-
-## Code in Main
-
-Install the dependencies
-
-```bash
-npm install
-```
-
-Run the tests :heavy_check_mark:
-
-```bash
-$ npm test
-
- PASS  ./index.test.js
-  ✓ throws invalid number (3ms)
-  ✓ wait 500 ms (504ms)
-  ✓ test runs (95ms)
-...
-```
-
-## Change action.yml
-
-The action.yml defines the inputs and output for your action.
-
-Update the action.yml with your name, description, inputs and outputs for your action.
-
-See the [documentation](https://help.github.com/en/articles/metadata-syntax-for-github-actions)
-
-## Change the Code
-
-Most toolkit and CI/CD operations involve async operations so the action is run in an async function.
-
-```javascript
-const core = require('@actions/core');
-...
-
-async function run() {
-  try {
-      ...
-  }
-  catch (error) {
-    core.setFailed(error.message);
-  }
-}
-
-run()
-```
-
-See the [toolkit documentation](https://github.com/actions/toolkit/blob/master/README.md#packages) for the various packages.
-
-## Package for distribution
-
-GitHub Actions will run the entry point from the action.yml. Packaging assembles the code into one file that can be checked in to Git, enabling fast and reliable execution and preventing the need to check in node_modules.
-
-Actions are run from GitHub repos.  Packaging the action will create a packaged action in the dist folder.
-
-Run prepare
-
-```bash
-npm run prepare
-```
-
-Since the packaged index.js is run from the dist folder.
-
-```bash
-git add dist
-```
-
-## Create a release branch
-
-Users shouldn't consume the action from master since that would be latest code and actions can break compatibility between major versions.
-
-Checkin to the v1 release branch
-
-```bash
-git checkout -b v1
-git commit -a -m "v1 release"
-```
-
-```bash
-git push origin v1
-```
-
-Note: We recommend using the `--license` option for ncc, which will create a license file for all of the production node modules used in your project.
-
-Your action is now published! :rocket:
-
-See the [versioning documentation](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md)
+GitHub Action to publish releases using tags, following sematic versioning.
 
 ## Usage
 
-You can now consume the action by referencing the v1 branch
-
 ```yaml
-uses: actions/javascript-action@v1
+uses: btnguyen2k/action-semrelease@v1
 with:
-  milliseconds: 1000
+  github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See the [actions tab](https://github.com/actions/javascript-action/actions) for runs of this action! :rocket:
+## How it works
+
+This action reads release information from a release notes file located in the root of the repository. The release notes file is expected to be in Markdown format, with each release information in a section with the following format:
+
+```markdown
+## 2023-08-07 - v1.0.0
+
+- Publish releases using tags, following semantic versioning.
+
+## 2023-08-06 - v0.9.1
+
+- Minor typo fixed.
+```
+
+👉 The section for the latest release must be at the top of the file. Version string and release notes are automatically extracted from the section title and content.
+
+👉 The version string must follow [Semantic Versioning spec](https://semver.org), and can be optionally prefixed by letter `v`.
+
+👉 Name of the release notes file must be one of the following `RELEASE-NOTES.md`, `RELEASE_NOTES.MD`, `RELEASE-NOTES`, `RELEASE_NOTES.md`, `RELEASE_NOTES.MD`, `RELEASE_NOTES`, `release-notes.md`, `release-notes`, `release_notes.md` and `release_notes`.
+
+## Inputs
+
+Inputs are supplied via the `with` block. The following inputs are accepted:
+
+| Input             | Required | Default | Description                                                 |
+|-------------------|----------|---------|-------------------------------------------------------------|
+| github-token      | Yes      |         | Either a PAT or GITHUB_TOKEN to access the repository.      |
+| dry-run           | No       | false   | If `true`, the action will run in dry-run mode.             |
+| tag-major-release | No       | true    | If `true`, a major release tag will be created, e.g. `v1`   |
+| tag-minor-release | No       | false   | If `true`, a minor release tag will be created, e.g. `v1.2` |
+
+## License
+
+MIT - See [LICENSE.md](LICENSE.md).

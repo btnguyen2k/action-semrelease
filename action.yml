@@ -1,13 +1,29 @@
-name: 'Wait'
-description: 'Wait a designated number of milliseconds'
+name: 'SemRelease'
+author: 'Thanh Nguyen <btnguyen2k(at)gmail(dot)com>'
+description: 'Publish releases using tags, following sematic versioning'
 inputs:
-  milliseconds:  # id of input
-    description: 'number of milliseconds to wait'
+  github-token:
+    description: 'GitHub token with access to your repository scoped in as a secret'
     required: true
-    default: '1000'
+  dry-run:
+    description: 'Dry run flag'
+    required: false
+    default: 'false'
+  tag-major-release:
+    description: 'If set, a major release tag will be created, e.g. v1'
+    required: false
+    default: 'true'
+  tag-minor-release:
+    description: 'If set, a minor release tag will be created, e.g. v1.2'
+    required: false
+    default: 'false'
 outputs:
-  time: # output will be available to future steps
-    description: 'The current time after waiting'
+  releaseVersion:
+    description: 'The release version string'
+  releaseNotes:
+    description: 'The release notes'
+  result:
+    description: 'Action result, either FAILED, SKIPPED, or SUCCESS'
 runs:
   using: 'node16'
   main: 'dist/index.js'

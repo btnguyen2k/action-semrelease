@@ -34,7 +34,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
       - name: Run Tests
-        run: npm run test
+        run: |
+          export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          npm run test
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
@@ -55,4 +57,5 @@ jobs:
       - name: Run Action
         uses: ./
         with:
-          milliseconds: 1000
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: true
