@@ -3,36 +3,23 @@
 # `index.js` is the code that will run.
 # For our project, we generate this file through a build process from other source files.
 # We need to make sure the checked-in `index.js` actually matches what we expect it to be.
-name: Ensure dist/
+name: "ensure dist/"
 
 on:
-  workflow_run:
-    workflows: [ "units-test" ]
-    types: [ "completed" ]
+  pull_request:
+    types: [closed]
+    branches: [ 'main' ]
+  push:
+    branches: [ 'main' ]
 
 jobs:
   ensure-dist:
     runs-on: ubuntu-latest
-    # if: |
-    #   (
-    #     (github.event.workflow_run.event == 'pull_request' && github.event.pull_request.merged == true) ||
-    #     github.event.workflow_run.event == 'push'
-    #   ) &&
-    #   github.event.workflow_run.conclusion == 'success' &&
-    #   github.ref == 'refs/heads/main'
     if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      github.ref == 'refs/heads/main'
+      github.event.pull_request.merged == true || github.event.workflow_run.event == 'push'
     permissions:
       contents: write
     steps:
-      - name: Debug
-        run: |
-          echo github.event.workflow_run.event: ${{ github.event.workflow_run.event }}
-          echo github.event.pull_request.merged: ${{ github.event.pull_request.merged }}
-          echo github.event.workflow_run.conclusion: ${{ github.event.workflow_run.conclusion }}
-          echo github.ref: ${{ github.ref }}
-          echo DEBUG: ${{ github.event.pull_request }}
       - name: Checkout Code
         uses: actions/checkout@v3
       - name: Install Node
@@ -41,6 +28,16 @@ jobs:
           node-version: 'lts/*'
       - name: Install Dependencies
         run: npm ci
+      - name: Run Tests
+        run: |
+          export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          export DRY_RUN=true
+          npm run test
+      - name: Run Action DryRun
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: true
       - name: Rebuild the dist/ directory
         run: |
           rm dist/*

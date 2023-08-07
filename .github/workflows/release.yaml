@@ -3,7 +3,7 @@ name: "release"
 
 on:
   workflow_run:
-    workflows: [ "Ensure dist/" ]
+    workflows: [ "ensure dist/" ]
     types: [ "completed" ]
 
 jobs:
@@ -16,17 +16,9 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Debug
-        run: |
-          echo github.event.workflow_run.event: ${{ github.event.workflow_run.event }}
-          echo github.event.pull_request.merged: ${{ github.event.pull_request.merged }}
-          echo github.event.workflow_run.conclusion: ${{ github.event.workflow_run.conclusion }}
-          echo github.ref: ${{ github.ref }}
-          echo DEBUG: ${{ github.event.pull_request }}
       - name: Checkout Code
         uses: actions/checkout@v3
       - name: SemRelease
         uses: btnguyen2k/action-semrelease@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          dry-run: true
