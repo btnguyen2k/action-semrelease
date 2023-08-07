@@ -9961,9 +9961,12 @@ async function createRelease(octokit, tagName, releaseNotes, isPrerelease, dryRu
 // most @actions toolkit packages have async methods
 async function run() {
   try {
-    const isDryRun = (core.getInput(inputDryRun) || 'false').toLowerCase() === 'true'
+    const isDryRun = (core.getInput(inputDryRun) || process.env['DRY_RUN'] || 'false').toLowerCase() === 'true'
     const isTagMajorRelease = (core.getInput(inputTagMajorRelease) || 'true').toLowerCase() === 'true'
     const isTagMinorRelease = (core.getInput(inputTagMinorRelease) || 'false').toLowerCase() === 'true'
+    console.log(`ℹ️ isDryRun: ${isDryRun}`)
+    console.log(`ℹ️ isTagMajorRelease: ${isTagMajorRelease}`)
+    console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
 
     const releaseNotes = utils.parseReleaseNotes()
     if (releaseNotes === undefined) {
@@ -9996,9 +9999,9 @@ async function run() {
 
     core.setOutput(outputResult, 'SUCCESS')
   } catch (error) {
+    console.log(error)
     core.setOutput(outputResult, 'FAILED')
     core.setFailed(`❌ ${error.message}`)
-    console.log(error)
   }
 }
 
