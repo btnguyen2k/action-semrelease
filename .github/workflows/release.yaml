@@ -22,6 +22,7 @@ jobs:
           echo github.event.pull_request.merged: ${{ github.event.pull_request.merged }}
           echo github.event.workflow_run.conclusion: ${{ github.event.workflow_run.conclusion }}
           echo github.ref: ${{ github.ref }}
+          echo DEBUG: ${{ github.event.pull_request }}
       - name: Checkout Code
         uses: actions/checkout@v3
       - name: SemRelease
