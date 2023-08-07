@@ -1,3 +1,45 @@
+module.exports = {
+  getTagByName,
+  getReleaseByTag,
+  parseReleaseNotes,
+}
+
+const github = require('@actions/github')
+
+async function getTagByName(octokit, tagName) {
+  try {
+    const {data: tagInfo} = await octokit.rest.git.getRef({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      reg: `tags/${tagName}`,
+    })
+    return tagInfo
+  } catch (error) {
+    if (error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
+
+async function getReleaseByTag(octokit, tagName) {
+  try {
+    const {data: releaseInfo} = await octokit.rest.repos.getReleaseByTag({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      tag: tagName,
+    })
+    return releaseInfo
+  } catch (error) {
+    if (error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
+
+/*----------------------------------------------------------------------*/
+
 const fs = require('fs')
 const reSemver = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)/
 
@@ -41,5 +83,3 @@ function parseReleaseNotes() {
     }
   }
 }
-
-module.exports = parseReleaseNotes

@@ -14,6 +14,8 @@ outputs:
     description: 'The release version string'
   releaseNotes:
     description: 'The release notes'
+  result:
+    description: 'Action result, either ERROR, SKIPPED, or SUCCESS'
 runs:
   using: 'node16'
   main: 'dist/index.js'
