@@ -24,15 +24,14 @@ describe('with octokit', () => {
 
   test('test deleteRefSilently', async() => {
     try {
-      await utils.deleteRefSilently(octokit, 'refs/tags/not-exist')
+      await utils.deleteRefSilently(octokit, 'refs/tags/vNotExists')
     } catch (error) {
       console.log(error)
     }
-    expect(true).toBe(true)
   })
 
   test('test getReleaseByTag - not-exists', async() => {
-    const tagInfo = await utils.getReleaseByTag(octokit, 'not-exists')
+    const tagInfo = await utils.getReleaseByTag(octokit, 'vNotExists')
     expect(tagInfo).toBeNull()
   })
 
