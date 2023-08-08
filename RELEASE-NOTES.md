@@ -1,5 +1,9 @@
 # SemRelease release notes
 
+## 2023-08-08 - v1.1.1
+
+- Fix: missing doc.
+
 ## 2023-08-08 - v1.1.0
 
 - Add input `tag-prefix`.

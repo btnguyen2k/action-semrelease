@@ -32,7 +32,11 @@ This action reads release information from a release notes file located in the r
 
 👉 The version string must follow [Semantic Versioning spec](https://semver.org), and can be optionally prefixed by letter `v`.
 
-👉 Name of the release notes file must be one of the following `RELEASE-NOTES.md`, `RELEASE_NOTES.MD`, `RELEASE-NOTES`, `RELEASE_NOTES.md`, `RELEASE_NOTES.MD`, `RELEASE_NOTES`, `release-notes.md`, `release-notes`, `release_notes.md` and `release_notes`.
+👉 Name of the release notes file must be one of the following `RELEASE-NOTES.md`, `RELEASE_NOTES.MD`, `RELEASE-NOTES`,
+`RELEASE_NOTES.md`, `RELEASE_NOTES.MD`, `RELEASE_NOTES`, `release-notes.md`, `release-notes`, `release_notes.md`,
+`release_notes`, `CHANGELOG.md`, `CHANGELOG.MD`, `CHANGELOG`, `CHANGE-LOG.md`, `CHANGE-LOG.MD`, `CHANGE-LOG`,
+`CHANGE_LOG.md`, `CHANGE_LOG.MD`, `CHANGE_LOG`, `changelog.md`, `changelog`, `change-log.md`, `change-log`,
+`change_log.md`, `change_log`.
 
 ## Inputs
 
