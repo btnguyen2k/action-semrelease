@@ -1,24 +1,22 @@
 module.exports = {
-  getTagByName,
+  deleteRefSilently,
   getReleaseByTag,
   parseReleaseNotes,
 }
 
 const github = require('@actions/github')
 
-async function getTagByName(octokit, tagName) {
+async function deleteRefSilently(octokit, ref) {
   try {
-    const {data: tagInfo} = await octokit.rest.git.getRef({
+    await octokit.rest.git.deleteRef({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
-      reg: `tags/${tagName}`,
+      ref,
     })
-    return tagInfo
   } catch (error) {
-    if (error.status === 404) {
-      return null
+    if (error.status !== 404 && error.status !== 422) {
+      throw error
     }
-    throw error
   }
 }
 
@@ -46,8 +44,7 @@ const reSemver = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?
 function parse(file) {
   const releaseNotes = []
   let enterReleaseNotes = false
-  const version = {
-  }
+  const version = {}
   const data = fs.readFileSync(file, {encoding: 'utf8'}).toString()
   const lines = data.split(/\r?\n/)
   for (const line of lines) {
@@ -74,15 +71,33 @@ function parse(file) {
   }
 }
 
-const releaseNoteFilenames = [
+const releaseNotesFilenames = [
   "RELEASE-NOTES.md", "RELEASE_NOTES.MD", "RELEASE-NOTES",
   "RELEASE_NOTES.md", "RELEASE_NOTES.MD", "RELEASE_NOTES",
   "release-notes.md", "release-notes",
   "release_notes.md", "release_notes",
 ]
 
+const changelogFilenames = [
+  "CHANGELOG.md", "CHANGELOG.MD", "CHANGELOG",
+  "CHANGE-LOG.md", "CHANGE-LOG.MD", "CHANGE-LOG",
+  "CHANGE_LOG.md", "CHANGE_LOG.MD", "CHANGE_LOG",
+  "changelog.md", "changelog",
+  "change-log.md", "change-log",
+  "change_log.md", "change_log",
+]
+
 function parseReleaseNotes() {
-  for (const file of releaseNoteFilenames) {
+  for (const file of releaseNotesFilenames) {
+    if (fs.existsSync(file)) {
+      const result = parse(file)
+      if (result === undefined) {
+        break
+      }
+      return result
+    }
+  }
+  for (const file of changelogFilenames) {
     if (fs.existsSync(file)) {
       return parse(file)
     }

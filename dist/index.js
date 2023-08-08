@@ -9604,26 +9604,24 @@ function wrappy (fn, cb) {
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 module.exports = {
-  getTagByName,
+  deleteRefSilently,
   getReleaseByTag,
   parseReleaseNotes,
 }
 
 const github = __nccwpck_require__(5438)
 
-async function getTagByName(octokit, tagName) {
+async function deleteRefSilently(octokit, ref) {
   try {
-    const {data: tagInfo} = await octokit.rest.git.getRef({
+    await octokit.rest.git.deleteRef({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
-      reg: `tags/${tagName}`,
+      ref,
     })
-    return tagInfo
   } catch (error) {
-    if (error.status === 404) {
-      return null
+    if (error.status !== 404 && error.status !== 422) {
+      throw error
     }
-    throw error
   }
 }
 
@@ -9651,8 +9649,7 @@ const reSemver = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?
 function parse(file) {
   const releaseNotes = []
   let enterReleaseNotes = false
-  const version = {
-  }
+  const version = {}
   const data = fs.readFileSync(file, {encoding: 'utf8'}).toString()
   const lines = data.split(/\r?\n/)
   for (const line of lines) {
@@ -9679,15 +9676,33 @@ function parse(file) {
   }
 }
 
-const releaseNoteFilenames = [
+const releaseNotesFilenames = [
   "RELEASE-NOTES.md", "RELEASE_NOTES.MD", "RELEASE-NOTES",
   "RELEASE_NOTES.md", "RELEASE_NOTES.MD", "RELEASE_NOTES",
   "release-notes.md", "release-notes",
   "release_notes.md", "release_notes",
 ]
 
+const changelogFilenames = [
+  "CHANGELOG.md", "CHANGELOG.MD", "CHANGELOG",
+  "CHANGE-LOG.md", "CHANGE-LOG.MD", "CHANGE-LOG",
+  "CHANGE_LOG.md", "CHANGE_LOG.MD", "CHANGE_LOG",
+  "changelog.md", "changelog",
+  "change-log.md", "change-log",
+  "change_log.md", "change_log",
+]
+
 function parseReleaseNotes() {
-  for (const file of releaseNoteFilenames) {
+  for (const file of releaseNotesFilenames) {
+    if (fs.existsSync(file)) {
+      const result = parse(file)
+      if (result === undefined) {
+        break
+      }
+      return result
+    }
+  }
+  for (const file of changelogFilenames) {
     if (fs.existsSync(file)) {
       return parse(file)
     }
@@ -9774,14 +9789,6 @@ module.exports = require("os");
 
 "use strict";
 module.exports = require("path");
-
-/***/ }),
-
-/***/ 7282:
-/***/ ((module) => {
-
-"use strict";
-module.exports = require("process");
 
 /***/ }),
 
@@ -9885,30 +9892,16 @@ var __webpack_exports__ = {};
 const core = __nccwpck_require__(2186)
 const github = __nccwpck_require__(5438)
 const utils = __nccwpck_require__(1608)
-const process = __nccwpck_require__(7282)
 
 const inputDryRun = 'dry-run'
 const inputGithubToken = 'github-token'
 const inputTagMajorRelease = 'tag-major-release'
 const inputTagMinorRelease = 'tag-minor-release'
+const inputTagPrefix = 'tag-prefix'
 
 const outputReleaseVersion = 'releaseVersion'
 const outputReleaseNotes = 'releaseNotes'
 const outputResult = 'result'
-
-async function deleteRefSilently(octokit, ref) {
-  try {
-    await octokit.rest.git.deleteRef({
-      owner: github.context.repo.owner,
-      repo: github.context.repo.repo,
-      ref,
-    })
-  } catch (error) {
-    if (error.status !== 404 && error.status !== 422) {
-      throw error
-    }
-  }
-}
 
 async function createTag(octokit, tagName, dryRun) {
   core.info(`🕘 Creating tag ${tagName}...`)
@@ -9927,7 +9920,7 @@ async function createTag(octokit, tagName, dryRun) {
     core.info(`✅ Tag created: ${JSON.stringify(tagInfo, null, 2)}`)
 
     const ref = `refs/tags/${tagName}`
-    await deleteRefSilently(octokit, ref)
+    await utils.deleteRefSilently(octokit, ref)
     const createRefParams = {
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
@@ -9961,35 +9954,36 @@ async function createRelease(octokit, tagName, releaseNotes, isPrerelease, dryRu
 // most @actions toolkit packages have async methods
 async function run() {
   try {
-    const isDryRun = (core.getInput(inputDryRun) || process.env['DRY_RUN'] || 'false').toLowerCase() === 'true'
-    const isTagMajorRelease = (core.getInput(inputTagMajorRelease) || 'true').toLowerCase() === 'true'
-    const isTagMinorRelease = (core.getInput(inputTagMinorRelease) || 'false').toLowerCase() === 'true'
+    const isDryRun = String(core.getInput(inputDryRun) || process.env['DRY_RUN'] || 'false').toLowerCase() === 'true'
+    const isTagMajorRelease = String(core.getInput(inputTagMajorRelease) || 'true').toLowerCase() === 'true'
+    const isTagMinorRelease = String(core.getInput(inputTagMinorRelease) ||  'false').toLowerCase() === 'true'
+    const tagPrefix = String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || 'v')
     console.log(`ℹ️ isDryRun: ${isDryRun}`)
     console.log(`ℹ️ isTagMajorRelease: ${isTagMajorRelease}`)
     console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
+    console.log(`ℹ️ tagPrefix: ${tagPrefix}`)
 
     const releaseNotes = utils.parseReleaseNotes()
-    if (releaseNotes === undefined) {
+    if (!releaseNotes) {
       throw new Error('No release version/notes found')
     }
 
     const githubToken = core.getInput(inputGithubToken) || process.env['GITHUB_TOKEN']
     const octokit = github.getOctokit(githubToken)
-    const tagName = `v${releaseNotes.release_version.semver}`
+    const tagName = `${tagPrefix}${releaseNotes.release_version.semver}`
     if (await utils.getReleaseByTag(octokit, tagName)) {
       core.info(`⚠️ Release ${tagName} already exists, skipped.`)
       core.setOutput(outputResult, 'SKIPPED')
       return
     }
-
     core.info(`ℹ️ Release version: ${releaseNotes.release_version.semver}`)
     core.setOutput(outputReleaseVersion, releaseNotes.release_version.semver)
     await createTag(octokit, tagName, isDryRun)
     if (isTagMajorRelease) {
-      await createTag(octokit, `v${releaseNotes.release_version.major}`, isDryRun)
+      await createTag(octokit, `${tagPrefix}${releaseNotes.release_version.major}`, isDryRun)
     }
     if (isTagMinorRelease) {
-      await createTag(octokit, `v${releaseNotes.release_version.major}.${releaseNotes.release_version.minor}`, isDryRun)
+      await createTag(octokit, `${tagPrefix}${releaseNotes.release_version.major}.${releaseNotes.release_version.minor}`, isDryRun)
     }
 
     const isPrerelease = releaseNotes.release_version.prerelease != ''
