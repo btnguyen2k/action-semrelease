@@ -1,24 +1,22 @@
 module.exports = {
-  getTagByName,
+  deleteRefSilently,
   getReleaseByTag,
   parseReleaseNotes,
 }
 
 const github = require('@actions/github')
 
-async function getTagByName(octokit, tagName) {
+async function deleteRefSilently(octokit, ref) {
   try {
-    const {data: tagInfo} = await octokit.rest.git.getRef({
+    await octokit.rest.git.deleteRef({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
-      reg: `tags/${tagName}`,
+      ref,
     })
-    return tagInfo
   } catch (error) {
-    if (error.status === 404) {
-      return null
+    if (error.status !== 404 && error.status !== 422) {
+      throw error
     }
-    throw error
   }
 }
 
@@ -46,8 +44,7 @@ const reSemver = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?
 function parse(file) {
   const releaseNotes = []
   let enterReleaseNotes = false
-  const version = {
-  }
+  const version = {}
   const data = fs.readFileSync(file, {encoding: 'utf8'}).toString()
   const lines = data.split(/\r?\n/)
   for (const line of lines) {

@@ -41,9 +41,10 @@ Inputs are supplied via the `with` block. The following inputs are accepted:
 | Input             | Required | Default | Description                                                 |
 |-------------------|----------|---------|-------------------------------------------------------------|
 | github-token      | Yes      |         | Either a PAT or GITHUB_TOKEN to access the repository.      |
-| dry-run           | No       | false   | If `true`, the action will run in dry-run mode.             |
-| tag-major-release | No       | true    | If `true`, a major release tag will be created, e.g. `v1`   |
-| tag-minor-release | No       | false   | If `true`, a minor release tag will be created, e.g. `v1.2` |
+| dry-run           | No       | `false` | If `true`, the action will run in dry-run mode.             |
+| tag-major-release | No       | `true`  | If `true`, a major release tag will be created, e.g. `v1`   |
+| tag-minor-release | No       | `false` | If `true`, a minor release tag will be created, e.g. `v1.2` |
+| tag-prefix        | No       | `'v'`   | Prefix for release tags.                                    |
 
 ## License
 

@@ -12,6 +12,10 @@ inputs:
     description: 'Dry run flag'
     required: false
     default: 'false'
+  tag-prefix:
+    description: 'Tag prefix, e.g. v'
+    required: false
+    default: 'v'
   tag-major-release:
     description: 'If set, a major release tag will be created, e.g. v1'
     required: false
