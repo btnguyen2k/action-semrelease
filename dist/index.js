@@ -9919,15 +9919,17 @@ async function createTag(octokit, tagName, dryRun) {
     const {data: tagInfo} = await octokit.rest.git.createTag(createTagParams)
     core.info(`✅ Tag created: ${JSON.stringify(tagInfo, null, 2)}`)
 
-    const ref = `refs/tags/${tagName}`
-    await utils.deleteRefSilently(octokit, ref)
+    const refFull = `refs/tags/${tagName}`
+    const refShort = `tags/${tagName}`
+    core.info(`🕘 Cleaning ${refFull}...`)
+    await utils.deleteRefSilently(octokit, refShort)
     const createRefParams = {
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
-      ref: ref,
+      ref: refFull,
       sha: tagInfo.sha,
     }
-    core.info(`🕘 Creating refs/tags/${tagName}...`)
+    core.info(`🕘 Creating ${refFull}...`)
     const {data: refInfo} = await octokit.rest.git.createRef(createRefParams)
     core.info(`✅ Ref created: ${JSON.stringify(refInfo, null, 2)}`)
   }
