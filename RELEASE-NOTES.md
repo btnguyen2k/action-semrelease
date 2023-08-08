@@ -6,6 +6,7 @@
 - Extend parsing to changelog file: `CHANGELOG.md`, `CHANGELOG.MD`, `CHANGELOG`, `CHANGE-LOG.md`, `CHANGE-LOG.MD`,
 `CHANGE-LOG`, `CHANGE_LOG.md`, `CHANGE_LOG.MD`, `CHANGE_LOG`, `changelog.md`, `changelog`, `change-log.md`,
 `change-log`, `change_log.md`, `change_log`.
+- Bug fixes & refactoring.
 
 ## 2023-08-07 - v1.0.0
 
