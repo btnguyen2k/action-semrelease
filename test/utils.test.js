@@ -26,7 +26,9 @@ describe('with octokit', () => {
     try {
       await utils.deleteRefSilently(octokit, 'refs/tags/vNotExists')
     } catch (error) {
-      console.log(error)
+      if (error.status !== 403) {
+        throw error
+      }
     }
   })
 
