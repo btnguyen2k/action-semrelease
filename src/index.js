@@ -13,6 +13,8 @@ const inputTagMinorRelease = 'tag-minor-release'
 const defaultTagMinorRelease = 'false'
 const inputTagPrefix = 'tag-prefix'
 const defaultTagPrefix = 'v'
+const inputBranches = 'branches'
+const defaultBranches = 'main,master'
 
 const outputReleaseVersion = 'releaseVersion'
 const outputReleaseNotes = 'releaseNotes'
@@ -80,6 +82,12 @@ function optDryRun() {
   return inputOrEnvDryRun || fileDryRun
 }
 
+function optBranches() {
+  const branchesStr = String(core.getInput(inputBranches) || process.env['TAG_PREFIX'] || defaultBranches)
+  const branches = branchesStr.trim().split(/[,;\s]+/)
+  return branches.filter(branch => branch.trim() !== '')
+}
+
 function generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages, removedMessages, fixedMessages, securityMessages) {
   let releaseNotes = ''
 
@@ -136,16 +144,24 @@ async function computeReleaseNotes(octokit) {
   } else {
     lastVersion = utils.parseSemver('0.0.0')
   }
-  const commits = await utils.getAllCommits(octokit, filterCommits)
+
+  const branches = optBranches()
+  const messages = []
+  for (const branch of branches) {
+    core.info(`🕘 Fetching commits from branch <${branch}>...`)
+    const commits = await utils.getAllCommits(octokit, {...filterCommits, sha: branch})
+    for (const commit of commits) {
+      messages.push(commit.commit.message.trim())
+    }
+  }
+
   const changedMessages = []
   const removedMessages = []
   const addedMessages = []
   const deprecatedMessages = []
   const fixedMessages = []
   const securityMessages = []
-  for (const commit of commits) {
-    const msg = commit.commit.message.trim()
-
+  for (const msg of messages) {
     if (msg.match(reBreak) || msg.match(reChanged)) {
       changedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
