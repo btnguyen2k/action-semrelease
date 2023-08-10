@@ -16,26 +16,11 @@ async function main() {
     console.log('octokit not available')
     return
   }
-  const branches = await utils.getAllBranches(octokit)
-  console.log(branches)
 
-  // const latestRelease = await utils.getLatestRelease(octokit)
-  // const tagName = latestRelease.tag_name
-  const refInfo = await utils.getRefByTagName(octokit, 'v1.0.0')
-  console.log(refInfo)
-
-  const tagInfo = await utils.getTag(octokit, refInfo.object.sha)
-  console.log(tagInfo)
-
-  // const commits = await utils.getCommits(octokit, {since: tagInfo.tagger.date, sha: '*'})
-  // console.log('Num commits:', commits.length)
-  // for (const commit of commits) {
-  //   const commitInfo = {
-  //     sha: commit.sha,
-  //     message: commit.commit.message,
-  //   }
-  //   console.log(commitInfo)
-  // }
+  const release = await utils.getReleaseByTag(octokit, 'v1.1.0')
+  console.log(release)
+  const commits = await utils.getAllCommits(octokit, {since: release.created_at})
+  console.log(commits)
 }
 
 main()

@@ -7,7 +7,11 @@ module.exports = {
   getRefByTagName,
   getTag,
 
+  parseSemver,
   parseReleaseNotes,
+  incMajorSemver,
+  incMinorSemver,
+  incPatchSemver,
 }
 
 const github = require('@actions/github')
@@ -128,36 +132,45 @@ async function getTag(octokit, sha) {
 /*----------------------------------------------------------------------*/
 
 const fs = require('fs')
-const reSemver = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)/
+const reSemverInHeading = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)/
+const reSemver = /^v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
+
+function parseSemver(text) {
+  const matches = text.match(reSemver)
+  if (matches) {
+    return {
+      semver: matches[1],
+      major: matches[2],
+      minor: matches[3],
+      patch: matches[4],
+      prerelease: matches[5] || '',
+    }
+  }
+  return null
+}
 
 function parse(file) {
   const releaseNotes = []
   let enterReleaseNotes = false
-  const version = {}
+  let version = null
   const data = fs.readFileSync(file, {encoding: 'utf8'}).toString()
   const lines = data.split(/\r?\n/)
   for (const line of lines) {
-    const matches = line.match(reSemver)
+    const matches = line.match(reSemverInHeading)
     if (matches) {
       if (enterReleaseNotes) {
         break
       }
       enterReleaseNotes = true
-      version.semver = matches[1]
-      version.major = matches[2]
-      version.minor = matches[3]
-      version.patch = matches[4]
-      version.prerelease = matches[5] || ''
+      version = parseSemver(matches[1].trim())
     } else if (enterReleaseNotes) {
-      releaseNotes.push(line)
+      releaseNotes.push(line.trim())
     }
   }
-  if (version !== '') {
-    return {
-      release_version: version,
-      release_notes: releaseNotes.join('\n').trim()
-    }
-  }
+  return version !== null ?{
+    release_version: version,
+    release_notes: releaseNotes.join('\n').trim()
+  } : null
 }
 
 const releaseNotesFilenames = [
@@ -180,9 +193,11 @@ function parseReleaseNotes() {
   for (const file of releaseNotesFilenames) {
     if (fs.existsSync(file)) {
       const result = parse(file)
-      if (result === undefined) {
+      if (!result) {
+        // release notes file exists but no release info found, so skip to check changelog file
         break
       }
+      // release notes file exists and release info found
       return result
     }
   }
@@ -190,5 +205,35 @@ function parseReleaseNotes() {
     if (fs.existsSync(file)) {
       return parse(file)
     }
+  }
+}
+
+function incMajorSemver(version) {
+  return {
+    semver: `${parseInt(version.major) + 1}.0.0`,
+    major: `${parseInt(version.major) + 1}`,
+    minor: '0',
+    patch: '0',
+    prerelease: '',
+  }
+}
+
+function incMinorSemver(version) {
+  return {
+    semver: `${version.major}.${parseInt(version.minor) + 1}.0`,
+    major: `${version.major}`,
+    minor: `${parseInt(version.minor) + 1}`,
+    patch: '0',
+    prerelease: '',
+  }
+}
+
+function incPatchSemver(version) {
+  return {
+    semver: `${version.major}.${version.minor}.${parseInt(version.patch) + 1}`,
+    major: `${version.major}`,
+    minor: `${version.minor}`,
+    patch: `${parseInt(version.patch) + 1}`,
+    prerelease: '',
   }
 }

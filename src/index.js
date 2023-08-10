@@ -80,6 +80,109 @@ function optDryRun() {
   return inputOrEnvDryRun || fileDryRun
 }
 
+function generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages, removedMessages, fixedMessages, securityMessages) {
+  let releaseNotes = ''
+
+  if (changedMessages && changedMessages.length > 0) {
+    releaseNotes += `### Changed\n\n${changedMessages.join('\n')}\n\n`
+  }
+
+  if (removedMessages && removedMessages.length > 0) {
+    releaseNotes += `### Removed\n\n${removedMessages.join('\n')}\n\n`
+  }
+
+  if (addedMessages && addedMessages.length > 0) {
+    releaseNotes += `### Added/Refactoring\n\n${addedMessages.join('\n')}\n\n`
+  }
+
+  if (deprecatedMessages && deprecatedMessages.length > 0) {
+    releaseNotes += `### Deprecated\n\n${deprecatedMessages.join('\n')}\n\n`
+  }
+
+  if (fixedMessages && fixedMessages.length > 0) {
+    releaseNotes += `### Fixed/Improvement\n\n${fixedMessages.join('\n')}\n\n`
+  }
+
+  if (securityMessages && securityMessages.length > 0) {
+    releaseNotes += `### Security\n\n${securityMessages.join('\n')}\n\n`
+  }
+
+  return releaseNotes
+}
+
+const reBreak = /^[^a-z]*break(king)?(\([^)]+\)\s*)?:?\s+/i
+const reChanged = /^[^a-z]*(break(ing)?\s+)?change(d|s)?(\([^)]+\)\s*)?:?\s+/i
+const reRemoved = /^[^a-z]*rem(ove(d)?)?(\([^)]+\)\s*)?:?\s+/i
+
+const reDeprecated = /^[^a-z]*deprecate(d)?(\([^)]+\)\s*)?:?\s+/i
+const reRefactor = /^[^a-z]*refactor(ed)?(\([^)]+\)\s*)?:?\s+/i
+const reAddMsg = /^[^a-z]*add(ed)?(\([^)]+\)\s*)?:?\s+/i
+const reFeatureMsg = /^[^a-z]*(new\s+)?feat(ure)?(\([^)]+\)\s*)?:?\s+/i
+
+const reFixMsg = /^[^a-z]*fix(ed)?(\([^)]+\)\s*)?:?\s+/i
+const rePatchMsg = /^[^a-z]*patch(ed)?(\([^)]+\)\s*)?:?\s+/i
+const reImprove = /^[^a-z]*improve(d|ment)?(\([^)]+\)\s*)?:?\s+/i
+const reBump = /^[^a-z]*bump(ed)?(\([^)]+\)\s*)?:?\s+/i
+
+const reSecurityMsg = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
+
+async function computeReleaseNotes(octokit) {
+  let lastVersion = null
+  const filterCommits = {}
+  const latestRelease = await utils.getLatestRelease(octokit)
+  if (latestRelease) {
+    lastVersion = utils.parseSemver(latestRelease.tag_name)
+    filterCommits.since = latestRelease.created_at
+  } else {
+    lastVersion = utils.parseSemver('0.0.0')
+  }
+  const commits = await utils.getAllCommits(octokit, filterCommits)
+  const changedMessages = []
+  const removedMessages = []
+  const addedMessages = []
+  const deprecatedMessages = []
+  const fixedMessages = []
+  const securityMessages = []
+  for (const commit of commits) {
+    const msg = commit.commit.message.trim()
+
+    if (msg.match(reBreak) || msg.match(reChanged)) {
+      changedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
+    }
+
+    if (msg.match(reRemoved)) {
+      removedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
+    }
+
+    if (msg.match(reDeprecated)) {
+      deprecatedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
+    }
+
+    if (msg.match(reRefactor) || msg.match(reAddMsg) || msg.match(reFeatureMsg)) {
+      addedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
+    }
+
+    if (msg.match(reFixMsg) || msg.match(rePatchMsg) || msg.match(reImprove) || msg.match(reBump)) {
+      fixedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
+    }
+
+    if (msg.match(reSecurityMsg)) {
+      securityMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
+    }
+  }
+  const version = changedMessages.length > 0 || removedMessages.length > 0
+    ? utils.incMajorSemver(lastVersion)
+    : addedMessages.length > 0 || deprecatedMessages.length > 0
+      ? utils.incMinorSemver(lastVersion)
+      : fixedMessages.length > 0 || securityMessages.length > 0
+        ? utils.incPatchSemver(lastVersion)
+        : lastVersion
+  return {
+    release_version: version,
+    release_notes: generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages, removedMessages, fixedMessages, securityMessages),
+  }
+}
+
 async function run() {
   try {
     const isDryRun = optDryRun()
@@ -93,20 +196,25 @@ async function run() {
     console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
     console.log(`ℹ️ tagPrefix: ${tagPrefix}`)
 
-    const releaseNotes = utils.parseReleaseNotes()
+    const githubToken = core.getInput(inputGithubToken) || process.env['GITHUB_TOKEN']
+    if (!githubToken) {
+      throw new Error('github-token is required')
+    }
+    const octokit = github.getOctokit(githubToken)
+
+    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit) : utils.parseReleaseNotes()
     if (!releaseNotes) {
       throw new Error('No release version/notes found')
     }
 
-    const githubToken = core.getInput(inputGithubToken) || process.env['GITHUB_TOKEN']
-    const octokit = github.getOctokit(githubToken)
+    core.info(`ℹ️ Release version: ${releaseNotes.release_version.semver}`)
     const tagName = `${tagPrefix}${releaseNotes.release_version.semver}`
     if (await utils.getReleaseByTag(octokit, tagName)) {
       core.info(`⚠️ Release ${tagName} already exists, skipped.`)
       core.setOutput(outputResult, 'SKIPPED')
       return
     }
-    core.info(`ℹ️ Release version: ${releaseNotes.release_version.semver}`)
+
     core.setOutput(outputReleaseVersion, releaseNotes.release_version.semver)
     await createTag(octokit, tagName, isDryRun)
     if (isTagMajorRelease) {
