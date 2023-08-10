@@ -1,6 +1,12 @@
 module.exports = {
   deleteRefSilently,
+  getAllBranches,
+  getAllCommits,
   getReleaseByTag,
+  getLatestRelease,
+  getRefByTagName,
+  getTag,
+
   parseReleaseNotes,
 }
 
@@ -20,6 +26,40 @@ async function deleteRefSilently(octokit, ref) {
   }
 }
 
+async function getAllBranches(octokit) {
+  const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+  const branches = []
+  for (;;) {
+    const {data: page} = await octokit.rest.repos.listBranches(params)
+    branches.push(...page)
+    if (page.length < params.per_page) {
+      break
+    }
+    params.page++
+  }
+  return branches
+}
+
+async function getAllCommits(octokit, filter = {}) {
+  const params = {...filter, owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+  const commits = []
+  try {
+    for (; ;) {
+      const {data: page} = await octokit.rest.repos.listCommits(params)
+      commits.push(...page)
+      if (page.length < params.per_page) {
+        break
+      }
+      params.page++
+    }
+  } catch (error) {
+    if (error.status !== 404) {
+      throw error
+    }
+  }
+  return commits
+}
+
 async function getReleaseByTag(octokit, tagName) {
   try {
     const {data: releaseInfo} = await octokit.rest.repos.getReleaseByTag({
@@ -28,6 +68,55 @@ async function getReleaseByTag(octokit, tagName) {
       tag: tagName,
     })
     return releaseInfo
+  } catch (error) {
+    if (error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
+
+async function getLatestRelease(octokit) {
+  try {
+    const {data: releases} = await octokit.rest.repos.listReleases({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      page: 1,
+      per_page: 1,
+    })
+    return releases.length > 0 ? releases[0] : null
+  } catch (error) {
+    if (error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
+
+async function getRefByTagName(octokit, tagName) {
+  try {
+    const {data: refInfo} = await octokit.rest.git.getRef({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      ref: `tags/${tagName}`
+    })
+    return refInfo
+  } catch (error) {
+    if (error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
+
+async function getTag(octokit, sha) {
+  try {
+    const {data: tagInfo} = await octokit.rest.git.getTag({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      tag_sha: sha,
+    })
+    return tagInfo
   } catch (error) {
     if (error.status === 404) {
       return null
