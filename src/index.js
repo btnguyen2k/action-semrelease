@@ -193,6 +193,19 @@ async function computeReleaseNotes(octokit) {
       : fixedMessages.length > 0 || securityMessages.length > 0
         ? utils.incPatchSemver(lastVersion)
         : lastVersion
+  if (parseInt(version.major) > parseInt(lastVersion.major)) {
+    core.info(`📣 Breaking changes detected, releasing new major version...`)
+  } else if (parseInt(version.minor) > parseInt(lastVersion.minor)) {
+    core.info(`📣 New features detected, releasing new minor version...`)
+  } else if (parseInt(version.patch) > parseInt(lastVersion.patch)) {
+    core.info(`📣 Bug fixes detected, releasing new patch version...`)
+  } else {
+    core.info(`📣 No new features, bug fixes or breaking changes detected, do not release new version.`)
+    return {
+      release_version: version,
+      release_notes: '',
+    }
+  }
   return {
     release_version: version,
     release_notes: generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages, removedMessages, fixedMessages, securityMessages),
