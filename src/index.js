@@ -3,10 +3,16 @@ const github = require('@actions/github')
 const utils = require('./utils')
 
 const inputDryRun = 'dry-run'
+const defaultDryRun = 'false'
+const inputAutoMode = 'auto-mode'
+const defaultAutoMode = 'false'
 const inputGithubToken = 'github-token'
 const inputTagMajorRelease = 'tag-major-release'
+const defaultTagMajorRelease = 'true'
 const inputTagMinorRelease = 'tag-minor-release'
+const defaultTagMinorRelease = 'false'
 const inputTagPrefix = 'tag-prefix'
+const defaultTagPrefix = 'v'
 
 const outputReleaseVersion = 'releaseVersion'
 const outputReleaseNotes = 'releaseNotes'
@@ -62,14 +68,27 @@ async function createRelease(octokit, tagName, releaseNotes, isPrerelease, dryRu
   }
 }
 
-// most @actions toolkit packages have async methods
+const fs = require('fs')
+
+// dry-run mode is enabled if any of the following is true:
+// - input.dry-run is set to true
+// - env.DRY_RUN is set to true
+// - file .semrelease-dry-run is present in the root of the repo
+function optDryRun() {
+  const inputOrEnvDryRun = String(core.getInput(inputDryRun) || process.env['DRY_RUN'] || defaultDryRun).toLowerCase() === 'true'
+  const fileDryRun = fs.existsSync('.semrelease-dry-run')
+  return inputOrEnvDryRun || fileDryRun
+}
+
 async function run() {
   try {
-    const isDryRun = String(core.getInput(inputDryRun) || process.env['DRY_RUN'] || 'false').toLowerCase() === 'true'
-    const isTagMajorRelease = String(core.getInput(inputTagMajorRelease) || 'true').toLowerCase() === 'true'
-    const isTagMinorRelease = String(core.getInput(inputTagMinorRelease) ||  'false').toLowerCase() === 'true'
-    const tagPrefix = String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || 'v')
+    const isDryRun = optDryRun()
+    const isAutoMode = String(core.getInput(inputAutoMode) || process.env['AUTO_MODE'] || defaultAutoMode).toLowerCase() === 'true'
+    const isTagMajorRelease = String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true'
+    const isTagMinorRelease = String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true'
+    const tagPrefix = String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix)
     console.log(`ℹ️ isDryRun: ${isDryRun}`)
+    console.log(`ℹ️ isAutoMode: ${isAutoMode}`)
     console.log(`ℹ️ isTagMajorRelease: ${isTagMajorRelease}`)
     console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
     console.log(`ℹ️ tagPrefix: ${tagPrefix}`)

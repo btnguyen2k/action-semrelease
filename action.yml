@@ -24,6 +24,10 @@ inputs:
     description: 'If set, a minor release tag will be created, e.g. v1.2'
     required: false
     default: 'false'
+  auto-mode:
+    description: 'If set, next release version is automatically determined, ignoring the information in RELEASE-NOTES or CHANGELOG file'
+    required: false
+    default: 'false'
 outputs:
   releaseVersion:
     description: 'The release version string'
