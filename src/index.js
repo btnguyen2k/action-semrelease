@@ -83,7 +83,7 @@ function optDryRun() {
 }
 
 function optBranches() {
-  const branchesStr = String(core.getInput(inputBranches) || process.env['TAG_PREFIX'] || defaultBranches)
+  const branchesStr = String(core.getInput(inputBranches) || process.env['BRANCHES'] || defaultBranches)
   const branches = branchesStr.trim().split(/[,;\s]+/)
   return branches.filter(branch => branch.trim() !== '')
 }

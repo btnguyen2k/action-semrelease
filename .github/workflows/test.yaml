@@ -57,9 +57,17 @@ jobs:
         run: npm ci
       - name: Rebuild the dist/ directory
         run: npm run prepare
-      - name: Run Action
+      - name: Run Action (non-auto)
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
           tag-prefix: vt
+      - name: Run Action (auto-mode)
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: true
+          auto-mode: true
+          branches: main,dev
+          tag-prefix: va
