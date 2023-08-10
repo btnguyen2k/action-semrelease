@@ -207,6 +207,12 @@ async function run() {
       throw new Error('No release version/notes found')
     }
 
+    if (releaseNotes.release_notes === '') {
+      core.info(`⚠️ Empty release notes, skipped.`)
+      core.setOutput(outputResult, 'SKIPPED')
+      return
+    }
+
     core.info(`ℹ️ Release version: ${releaseNotes.release_version.semver}`)
     const tagName = `${tagPrefix}${releaseNotes.release_version.semver}`
     if (await utils.getReleaseByTag(octokit, tagName)) {
