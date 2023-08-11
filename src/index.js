@@ -121,8 +121,9 @@ function generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages
 const reBreak = /^[^a-z]*break(king)?(\([^)]+\)\s*)?:?\s+/i
 const reChanged = /^[^a-z]*(break(ing)?\s+)?change(d|s)?(\([^)]+\)\s*)?:?\s+/i
 const reRemoved = /^[^a-z]*rem(ove(d)?)?(\([^)]+\)\s*)?:?\s+/i
+const reReplaced = /^[^a-z]*repl(ace(d)?)?(\([^)]+\)\s*)?:?\s+/i
 
-const reDeprecated = /^[^a-z]*deprecate(d)?(\([^)]+\)\s*)?:?\s+/i
+const reDeprecated = /^[^a-z]*depr(ecate(d)?)?(\([^)]+\)\s*)?:?\s+/i
 const reRefactor = /^[^a-z]*refactor(ed)?(\([^)]+\)\s*)?:?\s+/i
 const reAddMsg = /^[^a-z]*add(ed)?(\([^)]+\)\s*)?:?\s+/i
 const reFeatureMsg = /^[^a-z]*(new\s+)?feat(ure)?(\([^)]+\)\s*)?:?\s+/i
@@ -162,7 +163,7 @@ async function computeReleaseNotes(octokit) {
   const fixedMessages = []
   const securityMessages = []
   for (const msg of messages) {
-    if (msg.match(reBreak) || msg.match(reChanged)) {
+    if (msg.match(reBreak) || msg.match(reChanged) || msg.match(reReplaced)) {
       changedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 

@@ -34,7 +34,7 @@ inputs:
     default: 'main,master'
 outputs:
   releaseVersion:
-    description: 'The release version string'
+    description: 'The released version string'
   releaseNotes:
     description: 'The release notes'
   result:
