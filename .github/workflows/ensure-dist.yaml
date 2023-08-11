@@ -54,7 +54,6 @@ jobs:
             git commit -am "build [skip ci]"
             echo "Pushing changes to dist/..."
             git push
-            exit 1
           else
             echo "No changes detected after build."
           fi
