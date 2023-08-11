@@ -66,9 +66,9 @@ jobs:
           tag-prefix: vt
       - name: Check output (non-auto)
         run: |
-          echo Result: "${{ steps.run-action-non-auto.outputs.result }}"
-          echo releaseVersion: "${{ steps.run-action-non-auto.outputs.releaseVersion }}"
-          echo releaseNotes: "${{ steps.run-action-non-auto.outputs.releaseNotes }}"
+          echo -e result: "${{ steps.run-action-non-auto.outputs.result }}"
+          echo -e releaseVersion: "${{ steps.run-action-non-auto.outputs.releaseVersion }}"
+          echo -e releaseNotes: "${{ steps.run-action-non-auto.outputs.releaseNotes }}"
           if [ "${{ steps.run-action-non-auto.outputs.result }}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
             VERSION="${{ steps.run-action-non-auto.outputs.releaseVersion }}"
@@ -98,9 +98,9 @@ jobs:
           tag-prefix: va
       - name: Check output (auto-mode)
         run: |
-          echo Result: "${{ steps.run-action-auto-mode.outputs.result }}"
-          echo releaseVersion: "${{ steps.run-action-auto-mode.outputs.releaseVersion }}"
-          echo releaseNotes: "${{ steps.run-action-auto-mode.outputs.releaseNotes }}"
+          echo -e result: "${{ steps.run-action-auto-mode.outputs.result }}"
+          echo -e releaseVersion: "${{ steps.run-action-auto-mode.outputs.releaseVersion }}"
+          echo -e releaseNotes: "${{ steps.run-action-auto-mode.outputs.releaseNotes }}"
           if [ "${{ steps.run-action-auto-mode.outputs.result }}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
             VERSION="${{ steps.run-action-auto-mode.outputs.releaseVersion }}"
