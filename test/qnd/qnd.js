@@ -1,4 +1,4 @@
-const utils = require('../../src/utils')
+// const utils = require('../../src/utils')
 const github = require('@actions/github')
 
 function getOctokitInstance() {
@@ -17,10 +17,9 @@ async function main() {
     return
   }
 
-  const release = await utils.getReleaseByTag(octokit, 'v1.1.0')
-  console.log(release)
-  const commits = await utils.getAllCommits(octokit, {since: release.created_at})
-  console.log(commits)
+  const str = 'v1.2.3\n\n'
+  console.log(str)
+  console.log(str.trim())
 }
 
 main()

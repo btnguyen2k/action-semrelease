@@ -115,7 +115,7 @@ function generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages
     releaseNotes += `### Security\n\n${securityMessages.join('\n')}\n\n`
   }
 
-  return releaseNotes
+  return releaseNotes.trim()
 }
 
 const reBreak = /^[^a-z]*break(king)?(\([^)]+\)\s*)?:?\s+/i

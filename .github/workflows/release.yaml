@@ -19,8 +19,35 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
       - name: SemRelease
-        uses: btnguyen2k/action-semrelease@v1
+        id: semrelease
+        # uses: btnguyen2k/action-semrelease@v1
+        uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           tag-major-release: true
           tag-minor-release: true
+          auto-mode: true
+          branches: main,dev
+      - name: Update RELEASE-NOTES.md and package.json
+        run: |
+          if [ "${{ steps.run-action-auto-mode.outputs.result }}" == "SUCCESS" ]; then
+            DATE=`date +%Y-%m-%d`
+            VERSION="${{ steps.run-action-auto-mode.outputs.releaseVersion }}"
+            RELEASE_NOTES="${{ steps.run-action-auto-mode.outputs.releaseNotes }}"
+            head -1 RELEASE-NOTES.md > .temp.md
+            echo -e "\n## $DATE - v$VERSION\n\n$RELEASE_NOTES" >> .temp.md
+            tail -n +2 RELEASE-NOTES.md >> .temp.md
+            mv -f .temp.md RELEASE-NOTES.md
+            echo ========== content of RELEASE-NOTES.md ==========
+            cat RELEASE-NOTES.md
+            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"$VERSION\"/" package.json
+            echo ========== content of package.json ==========
+            cat package.json
+            echo ========== commit updates ==========
+            git config --global user.email "<>"
+            git config --global user.name "CI Build"
+            git commit -am "Update RELEASE-NOTES.md and package.json"
+            git push
+          else
+            echo "SKIPPED."
+          fi
