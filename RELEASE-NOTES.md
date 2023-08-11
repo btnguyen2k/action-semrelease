@@ -1,5 +1,12 @@
 # SemRelease release notes
 
+## 2023-08-11 - v2.0.1
+
+### Fixed/Improvement
+
+- Improvement: prevent duplicated commit messages
+- Improvement: prevent duplicated commit messages
+
 ## 2023-08-11 - v2.0.0
 
 ### Changed
