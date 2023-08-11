@@ -30,17 +30,18 @@ jobs:
           branches: main,dev
       - name: Update RELEASE-NOTES.md and package.json
         run: |
-          if [ "${{ steps.semrelease.outputs.result }}" == "SUCCESS" ]; then
+          RESULT='${{ steps.semrelease.outputs.result }}'
+          if [ "${RESULT}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
-            VERSION="${{ steps.semrelease.outputs.releaseVersion }}"
-            RELEASE_NOTES="${{ steps.semrelease.outputs.releaseNotes }}"
+            VERSION='${{ steps.semrelease.outputs.releaseVersion }}'
+            RELEASE_NOTES='${{ steps.semrelease.outputs.releaseNotes }}'
             head -1 RELEASE-NOTES.md > .temp.md
-            echo -e "\n## $DATE - v$VERSION\n\n$RELEASE_NOTES" >> .temp.md
+            echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
             mv -f .temp.md RELEASE-NOTES.md
             echo ========== content of RELEASE-NOTES.md ==========
             cat RELEASE-NOTES.md
-            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"$VERSION\"/" package.json
+            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
             echo ========== content of package.json ==========
             cat package.json
             echo ========== commit updates ==========

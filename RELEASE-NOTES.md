@@ -10,7 +10,7 @@
 
 - Add new input `branches`
 - Feature: automatically generate release notes from commit messages
-- Add: `auto-mode` input and `.semrelease-dry-run` file
+- Add: `auto-mode` input and '.semrelease-dry-run' file
 
 ## 2023-08-08 - v1.1.1
 
