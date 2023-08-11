@@ -12,7 +12,6 @@ module.exports = {
   incMajorSemver,
   incMinorSemver,
   incPatchSemver,
-  removePrereleaseSemver,
 }
 
 const github = require('@actions/github')
@@ -235,16 +234,6 @@ function incPatchSemver(version) {
     major: `${version.major}`,
     minor: `${version.minor}`,
     patch: `${parseInt(version.patch) + 1}`,
-    prerelease: '',
-  }
-}
-
-function removePrereleaseSemver(version) {
-  return {
-    semver: `${version.major}.${version.minor}.${version.patch}`,
-    major: `${version.major}`,
-    minor: `${version.minor}`,
-    patch: `${version.patch}`,
     prerelease: '',
   }
 }
