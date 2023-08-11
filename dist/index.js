@@ -10177,7 +10177,14 @@ async function computeReleaseNotes(octokit) {
     core.info(`🕘 Fetching commits from branch <${branch}>...`)
     const commits = await utils.getAllCommits(octokit, {...filterCommits, sha: branch})
     for (const commit of commits) {
-      messages.push(commit.commit.message.trim())
+      const commitMsg = commit.commit.message.trim()
+      for (const msg of messages) {
+        if (msg === commitMsg) {
+          // prevent duplicated messages
+          continue
+        }
+      }
+      messages.push(commitMsg)
     }
   }
 
