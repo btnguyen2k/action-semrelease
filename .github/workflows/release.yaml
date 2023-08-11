@@ -30,10 +30,10 @@ jobs:
           branches: main,dev
       - name: Update RELEASE-NOTES.md and package.json
         run: |
-          if [ "${{ steps.run-action-auto-mode.outputs.result }}" == "SUCCESS" ]; then
+          if [ "${{ steps.semrelease.outputs.result }}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
-            VERSION="${{ steps.run-action-auto-mode.outputs.releaseVersion }}"
-            RELEASE_NOTES="${{ steps.run-action-auto-mode.outputs.releaseNotes }}"
+            VERSION="${{ steps.semrelease.outputs.releaseVersion }}"
+            RELEASE_NOTES="${{ steps.semrelease.outputs.releaseNotes }}"
             head -1 RELEASE-NOTES.md > .temp.md
             echo -e "\n## $DATE - v$VERSION\n\n$RELEASE_NOTES" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
