@@ -153,11 +153,9 @@ async function computeReleaseNotes(octokit) {
     const commits = await utils.getAllCommits(octokit, {...filterCommits, sha: branch})
     for (const commit of commits) {
       const commitMsg = commit.commit.message.trim()
-      for (const msg of messages) {
-        if (msg === commitMsg) {
-          // prevent duplicated messages
-          continue
-        }
+      if (messages.some(msg => msg === commitMsg)) {
+        // prevent duplicated messages
+        continue
       }
       messages.push(commitMsg)
     }
