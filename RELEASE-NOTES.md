@@ -1,5 +1,21 @@
 # SemRelease release notes
 
+## 2023-08-11 - v2.0.0
+
+### Changed
+
+- Change: donot create new release if release notes are empty
+- Change: donot create new release if release notes are empty
+
+### Added/Refactoring
+
+- Add new input 'branches'
+- Feature: automatically generate release notes from commit messages
+- add: auto-mode input and .semrelease-dry-run file
+- Add new input 'branches'
+- Feature: automatically generate release notes from commit messages
+- add: auto-mode input and .semrelease-dry-run file
+
 ## 2023-08-08 - v1.1.1
 
 - Fix: missing doc.
