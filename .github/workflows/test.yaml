@@ -66,25 +66,17 @@ jobs:
           tag-prefix: vt
       - name: Check output (non-auto)
         run: |
-          echo Result: "${{ steps.run-action-non-auto.outputs.result }}"
-          echo releaseVersion: "${{ steps.run-action-non-auto.outputs.releaseVersion }}"
-          echo releaseNotes: "${{ steps.run-action-non-auto.outputs.releaseNotes }}"
-          if [ "${{ steps.run-action-non-auto.outputs.result }}" == "SUCCESS" ]; then
-            DATE=`date +%Y-%m-%d`
-            VERSION="${{ steps.run-action-non-auto.outputs.releaseVersion }}"
-            RELEASE_NOTES="${{ steps.run-action-non-auto.outputs.releaseNotes }}"
-            cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
+          RESULT='${{ steps.run-action-non-auto.outputs.result }}'
+          VERSION='${{ steps.run-action-non-auto.outputs.releaseVersion }}'
+          RELEASE_NOTES='${{ steps.run-action-non-auto.outputs.releaseNotes }}'
+          echo -e Result: ${RESULT}
+          echo -e Version: ${VERSION}
+          echo -e Release Notes: ${RELEASE_NOTES}
+          if [ "${RESULT}" == "SUCCESS" ]; then
             cp -f package.json package.json.bak
-            head -1 RELEASE-NOTES.md > .temp.md
-            echo -e "\n## $DATE - v$VERSION\n\n$RELEASE_NOTES" >> .temp.md
-            tail -n +2 RELEASE-NOTES.md >> .temp.md
-            mv -f .temp.md RELEASE-NOTES.md
-            echo ========== content of RELEASE-NOTES.md ==========
-            cat RELEASE-NOTES.md
-            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"$VERSION\"/" package.json
+            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
             echo ========== content of package.json ==========
             cat package.json
-            cp -f RELEASE-NOTES.md.bak RELEASE-NOTES.md
             cp -f package.json.bak package.json
           fi
       - name: Run Action (auto-mode)
@@ -98,22 +90,23 @@ jobs:
           tag-prefix: va
       - name: Check output (auto-mode)
         run: |
-          echo Result: "${{ steps.run-action-auto-mode.outputs.result }}"
-          echo releaseVersion: "${{ steps.run-action-auto-mode.outputs.releaseVersion }}"
-          echo releaseNotes: "${{ steps.run-action-auto-mode.outputs.releaseNotes }}"
-          if [ "${{ steps.run-action-auto-mode.outputs.result }}" == "SUCCESS" ]; then
+          RESULT='${{ steps.run-action-auto-mode.outputs.result }}'
+          VERSION='${{ steps.run-action-auto-mode.outputs.releaseVersion }}'
+          RELEASE_NOTES='${{ steps.run-action-auto-mode.outputs.releaseNotes }}'
+          echo -e Result: ${RESULT}
+          echo -e Version: ${VERSION}
+          echo -e Release Notes: ${RELEASE_NOTES}
+          if [ "${RESULT}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
-            VERSION="${{ steps.run-action-auto-mode.outputs.releaseVersion }}"
-            RELEASE_NOTES="${{ steps.run-action-auto-mode.outputs.releaseNotes }}"
             cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
             cp -f package.json package.json.bak
             head -1 RELEASE-NOTES.md > .temp.md
-            echo -e "\n## $DATE - v$VERSION\n\n$RELEASE_NOTES" >> .temp.md
+            echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
             mv -f .temp.md RELEASE-NOTES.md
             echo ========== content of RELEASE-NOTES.md ==========
             cat RELEASE-NOTES.md
-            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"$VERSION\"/" package.json
+            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
             echo ========== content of package.json ==========
             cat package.json
             cp -f RELEASE-NOTES.md.bak RELEASE-NOTES.md
