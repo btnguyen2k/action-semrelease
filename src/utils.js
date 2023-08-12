@@ -1,9 +1,11 @@
 module.exports = {
   deleteRefSilently,
   getAllBranches,
+  getCommit,
   getAllCommits,
   getReleaseByTag,
   findLatestRelease,
+  findLatestTag,
   getRefByTagName,
   getTag,
 
@@ -42,6 +44,22 @@ async function getAllBranches(octokit) {
     params.page++
   }
   return branches
+}
+
+async function getCommit(octokit, sha) {
+  try {
+    const {data: commitInfo} = await octokit.rest.git.getCommit({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      commit_sha: sha,
+    })
+    return commitInfo
+  } catch (error) {
+    if (error.status === 404) {
+      return null
+    }
+    throw error
+  }
 }
 
 async function getAllCommits(octokit, filter = {}) {
@@ -117,6 +135,29 @@ async function getRefByTagName(octokit, tagName) {
     }
     throw error
   }
+}
+
+async function findLatestTag(octokit, tagPrefix) {
+  const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+  try {
+    for (; ;) {
+      const {data: page} = await octokit.rest.repos.listTags(params)
+      for (const tag of page) {
+        if (tag.name.startsWith(tagPrefix) && tag.name.slice(tagPrefix.length).match(reSemverRaw)) {
+          return tag
+        }
+      }
+      if (page.length < params.per_page) {
+        break
+      }
+      params.page++
+    }
+  } catch (error) {
+    if (error.status !== 404) {
+      throw error
+    }
+  }
+  return null
 }
 
 async function getTag(octokit, sha) {

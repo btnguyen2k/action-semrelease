@@ -1,4 +1,4 @@
-// const utils = require('../../src/utils')
+const utils = require('../../src/utils')
 const github = require('@actions/github')
 
 function getOctokitInstance() {
@@ -17,9 +17,10 @@ async function main() {
     return
   }
 
-  const str = 'v1.2.3\n\n'
-  console.log(str)
-  console.log(str.trim())
+  const tag = await utils.findLatestTag(octokit, 'semver/v')
+  console.log('tag:', tag)
+  const commit = await utils.getCommit(octokit, tag.commit.sha)
+  console.log('commit:', commit)
 }
 
 main()

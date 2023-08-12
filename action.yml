@@ -32,6 +32,10 @@ inputs:
     description: 'Branches to fetch commit messages for release notes (auto-mode only)'
     required: false
     default: 'main,master'
+  tag-only:
+    description: 'If set, only tags are created'
+    required: false
+    default: 'false'
 outputs:
   releaseVersion:
     description: 'The released version string'
