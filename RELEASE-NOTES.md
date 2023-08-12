@@ -1,5 +1,49 @@
 # SemRelease release notes
 
+## 2023-08-12 - v3.0.0
+
+### Changed
+
+- Change: Commit message starts with Dependency: triggers new patch release; while bumping version will no longer trigger new release
+
+### Added/Refactoring
+
+- Feature: Find latest release using tag-prefix
+
+### Fixed/Improvement
+
+- Improvement: log commit message that trigger new release version
+- Bump btnguyen2k/action-semrelease from 1 to 2
+
+Bumps [btnguyen2k/action-semrelease](https://github.com/btnguyen2k/action-semrelease) from 1 to 2.
+- [Release notes](https://github.com/btnguyen2k/action-semrelease/releases)
+- [Changelog](https://github.com/btnguyen2k/action-semrelease/blob/main/RELEASE-NOTES.md)
+- [Commits](https://github.com/btnguyen2k/action-semrelease/compare/v1...v2)
+
+---
+updated-dependencies:
+- dependency-name: btnguyen2k/action-semrelease
+  dependency-type: direct:production
+  update-type: version-update:semver-major
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+- Bump eslint from 8.46.0 to 8.47.0
+
+Bumps [eslint](https://github.com/eslint/eslint) from 8.46.0 to 8.47.0.
+- [Release notes](https://github.com/eslint/eslint/releases)
+- [Changelog](https://github.com/eslint/eslint/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/eslint/eslint/compare/v8.46.0...v8.47.0)
+
+---
+updated-dependencies:
+- dependency-name: eslint
+  dependency-type: direct:development
+  update-type: version-update:semver-minor
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
 ## 2023-08-11 - v2.0.2
 
 ### Fixed/Improvement
