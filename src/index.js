@@ -131,7 +131,7 @@ const reFeatureMsg = /^[^a-z]*(new\s+)?feat(ure)?(\([^)]+\)\s*)?:?\s+/i
 const reFixMsg = /^[^a-z]*fix(ed)?(\([^)]+\)\s*)?:?\s+/i
 const rePatchMsg = /^[^a-z]*patch(ed)?(\([^)]+\)\s*)?:?\s+/i
 const reImprove = /^[^a-z]*improve(d|ment)?(\([^)]+\)\s*)?:?\s+/i
-const reBump = /^[^a-z]*bump(ed)?(\([^)]+\)\s*)?:?\s+/i
+const reDependency = /^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
 
 const reSecurityMsg = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 
@@ -184,7 +184,7 @@ async function computeReleaseNotes(octokit) {
       addedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
-    if (msg.match(reFixMsg) || msg.match(rePatchMsg) || msg.match(reImprove) || msg.match(reBump)) {
+    if (msg.match(reFixMsg) || msg.match(rePatchMsg) || msg.match(reImprove) || msg.match(reDependency)) {
       fixedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
