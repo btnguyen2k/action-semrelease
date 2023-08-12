@@ -9606,9 +9606,11 @@ function wrappy (fn, cb) {
 module.exports = {
   deleteRefSilently,
   getAllBranches,
+  getCommit,
   getAllCommits,
   getReleaseByTag,
   findLatestRelease,
+  findLatestTag,
   getRefByTagName,
   getTag,
 
@@ -9647,6 +9649,22 @@ async function getAllBranches(octokit) {
     params.page++
   }
   return branches
+}
+
+async function getCommit(octokit, sha) {
+  try {
+    const {data: commitInfo} = await octokit.rest.git.getCommit({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      commit_sha: sha,
+    })
+    return commitInfo
+  } catch (error) {
+    if (error.status === 404) {
+      return null
+    }
+    throw error
+  }
 }
 
 async function getAllCommits(octokit, filter = {}) {
@@ -9722,6 +9740,29 @@ async function getRefByTagName(octokit, tagName) {
     }
     throw error
   }
+}
+
+async function findLatestTag(octokit, tagPrefix) {
+  const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+  try {
+    for (; ;) {
+      const {data: page} = await octokit.rest.repos.listTags(params)
+      for (const tag of page) {
+        if (tag.name.startsWith(tagPrefix) && tag.name.slice(tagPrefix.length).match(reSemverRaw)) {
+          return tag
+        }
+      }
+      if (page.length < params.per_page) {
+        break
+      }
+      params.page++
+    }
+  } catch (error) {
+    if (error.status !== 404) {
+      throw error
+    }
+  }
+  return null
 }
 
 async function getTag(octokit, sha) {
@@ -10047,6 +10088,8 @@ const inputTagPrefix = 'tag-prefix'
 const defaultTagPrefix = 'v'
 const inputBranches = 'branches'
 const defaultBranches = 'main,master'
+const inputTagOnly = 'tag-only'
+const defaultTagOnly = 'false'
 
 const outputReleaseVersion = 'releaseVersion'
 const outputReleaseNotes = 'releaseNotes'
@@ -10176,8 +10219,17 @@ async function computeReleaseNotes(octokit, tagPrefix) {
     filterCommits.since = latestRelease.created_at
     core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> at <${latestRelease.created_at}>`)
   } else {
-    lastVersion = utils.parseSemver('0.0.0')
-    core.info(`ℹ️ No release found for tag-prefix <${tagPrefix}>`)
+    core.info(`⚠️ No release found for tag-prefix <${tagPrefix}>, checking tags...`)
+    const latestTag = await utils.findLatestTag(octokit, tagPrefix)
+    if (latestTag) {
+      lastVersion = utils.parseSemver(latestTag.name)
+      const commit = await utils.getCommit(octokit, latestTag.commit.sha)
+      filterCommits.since = commit.committer.date
+      core.info(`ℹ️ Found latest tag <${latestTag.name}> at <${commit.committer.date}>`)
+    } else {
+      lastVersion = utils.parseSemver('0.0.0')
+      core.info(`ℹ️ No release/tag found for tag-prefix <${tagPrefix}>`)
+    }
   }
 
   const branches = optBranches()
@@ -10265,8 +10317,10 @@ async function run() {
     const isTagMajorRelease = String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true'
     const isTagMinorRelease = String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true'
     const tagPrefix = String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix)
+    const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
     console.log(`ℹ️ isDryRun: ${isDryRun}`)
     console.log(`ℹ️ isAutoMode: ${isAutoMode}`)
+    console.log(`ℹ️ isTagOnly: ${isTagOnly}`)
     console.log(`ℹ️ isTagMajorRelease: ${isTagMajorRelease}`)
     console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
     console.log(`ℹ️ tagPrefix: ${tagPrefix}`)
@@ -10308,7 +10362,11 @@ async function run() {
     const isPrerelease = releaseNotes.release_version.prerelease != ''
     core.info(`ℹ️ Release notes:\n${releaseNotes.release_notes}`)
     core.setOutput(outputReleaseNotes, releaseNotes.release_notes)
-    await createRelease(octokit, tagName, releaseNotes, isPrerelease, isDryRun)
+    if (!isTagOnly) {
+      await createRelease(octokit, tagName, releaseNotes, isPrerelease, isDryRun)
+    } else {
+      core.info(`⚠️ Tag-only mode enabled, skipped creating release.`)
+    }
 
     core.setOutput(outputResult, 'SUCCESS')
   } catch (error) {
