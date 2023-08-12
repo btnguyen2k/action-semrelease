@@ -4,12 +4,10 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: "weekly"
-      day: "sunday"
+      interval: "daily"
 
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: "weekly"
-      day: "sunday"
+      interval: "daily"
     versioning-strategy: "increase-if-necessary"
