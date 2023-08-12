@@ -15,6 +15,8 @@ const inputTagPrefix = 'tag-prefix'
 const defaultTagPrefix = 'v'
 const inputBranches = 'branches'
 const defaultBranches = 'main,master'
+const inputTagOnly = 'tag-only'
+const defaultTagOnly = 'false'
 
 const outputReleaseVersion = 'releaseVersion'
 const outputReleaseNotes = 'releaseNotes'
@@ -242,8 +244,10 @@ async function run() {
     const isTagMajorRelease = String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true'
     const isTagMinorRelease = String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true'
     const tagPrefix = String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix)
+    const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
     console.log(`ℹ️ isDryRun: ${isDryRun}`)
     console.log(`ℹ️ isAutoMode: ${isAutoMode}`)
+    console.log(`ℹ️ isTagOnly: ${isTagOnly}`)
     console.log(`ℹ️ isTagMajorRelease: ${isTagMajorRelease}`)
     console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
     console.log(`ℹ️ tagPrefix: ${tagPrefix}`)
@@ -285,7 +289,11 @@ async function run() {
     const isPrerelease = releaseNotes.release_version.prerelease != ''
     core.info(`ℹ️ Release notes:\n${releaseNotes.release_notes}`)
     core.setOutput(outputReleaseNotes, releaseNotes.release_notes)
-    await createRelease(octokit, tagName, releaseNotes, isPrerelease, isDryRun)
+    if (!isTagOnly) {
+      await createRelease(octokit, tagName, releaseNotes, isPrerelease, isDryRun)
+    } else {
+      core.info(`⚠️ Tag-only mode enabled, skipped creating release.`)
+    }
 
     core.setOutput(outputResult, 'SUCCESS')
   } catch (error) {
