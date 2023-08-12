@@ -24,6 +24,42 @@ test('incMajorSemver', () => {
   expect(utils.incMajorSemver(version)).toEqual(expected)
 })
 
+test('incMinorSemver', () => {
+  const version = {
+    semver: '1.2.3-rc.1',
+    major: '1',
+    minor: '2',
+    patch: '3',
+    prerelease: 'rc.1',
+  }
+  const expected = {
+    semver: '1.3.0',
+    major: '1',
+    minor: '3',
+    patch: '0',
+    prerelease: '',
+  }
+  expect(utils.incMinorSemver(version)).toEqual(expected)
+})
+
+test('incPatchSemver', () => {
+  const version = {
+    semver: '1.2.3-rc.1',
+    major: '1',
+    minor: '2',
+    patch: '3',
+    prerelease: 'rc.1',
+  }
+  const expected = {
+    semver: '1.2.4',
+    major: '1',
+    minor: '2',
+    patch: '4',
+    prerelease: '',
+  }
+  expect(utils.incPatchSemver(version)).toEqual(expected)
+})
+
 function getOctokitInstance() {
   const githubToken = process.env['GITHUB_TOKEN'] || ''
   if (!githubToken) {
