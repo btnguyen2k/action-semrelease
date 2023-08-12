@@ -4,6 +4,7 @@ module.exports = {
   getAllCommits,
   getReleaseByTag,
   findLatestRelease,
+  findLatestTag,
   getRefByTagName,
   getTag,
 
@@ -117,6 +118,29 @@ async function getRefByTagName(octokit, tagName) {
     }
     throw error
   }
+}
+
+async function findLatestTag(octokit, tagPrefix) {
+  const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+  try {
+    for (; ;) {
+      const {data: page} = await octokit.rest.repos.listTags(params)
+      for (const tag of page) {
+        if (tag.name.startsWith(tagPrefix) && tag.name.slice(tagPrefix.length).match(reSemverRaw)) {
+          return tag
+        }
+      }
+      if (page.length < params.per_page) {
+        break
+      }
+      params.page++
+    }
+  } catch (error) {
+    if (error.status !== 404) {
+      throw error
+    }
+  }
+  return null
 }
 
 async function getTag(octokit, sha) {
