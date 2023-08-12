@@ -135,15 +135,17 @@ const reDependency = /^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
 
 const reSecurityMsg = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 
-async function computeReleaseNotes(octokit) {
+async function computeReleaseNotes(octokit, tagPrefix) {
   let lastVersion = null
   const filterCommits = {}
-  const latestRelease = await utils.getLatestRelease(octokit)
+  const latestRelease = await utils.findLatestRelease(octokit, tagPrefix)
   if (latestRelease) {
     lastVersion = utils.parseSemver(latestRelease.tag_name)
     filterCommits.since = latestRelease.created_at
+    core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> at <${latestRelease.created_at}>`)
   } else {
     lastVersion = utils.parseSemver('0.0.0')
+    core.info(`ℹ️ No release found for tag-prefix <${tagPrefix}>`)
   }
 
   const branches = optBranches()
@@ -237,7 +239,7 @@ async function run() {
     }
     const octokit = github.getOctokit(githubToken)
 
-    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit) : utils.parseReleaseNotes()
+    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit, tagPrefix) : utils.parseReleaseNotes()
     if (!releaseNotes) {
       throw new Error('No release version/notes found')
     }

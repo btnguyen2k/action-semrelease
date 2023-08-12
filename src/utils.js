@@ -3,7 +3,7 @@ module.exports = {
   getAllBranches,
   getAllCommits,
   getReleaseByTag,
-  getLatestRelease,
+  findLatestRelease,
   getRefByTagName,
   getTag,
 
@@ -80,21 +80,27 @@ async function getReleaseByTag(octokit, tagName) {
   }
 }
 
-async function getLatestRelease(octokit) {
+async function findLatestRelease(octokit, tagPrefix) {
+  const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
   try {
-    const {data: releases} = await octokit.rest.repos.listReleases({
-      owner: github.context.repo.owner,
-      repo: github.context.repo.repo,
-      page: 1,
-      per_page: 1,
-    })
-    return releases.length > 0 ? releases[0] : null
-  } catch (error) {
-    if (error.status === 404) {
-      return null
+    for (; ;) {
+      const {data: page} = await octokit.rest.repos.listReleases(params)
+      for (const release of page) {
+        if (release.tag_name.startsWith(tagPrefix) && release.tag_name.slice(tagPrefix.length).match(reSemverRaw)) {
+          return release
+        }
+      }
+      if (page.length < params.per_page) {
+        break
+      }
+      params.page++
     }
-    throw error
+  } catch (error) {
+    if (error.status !== 404) {
+      throw error
+    }
   }
+  return null
 }
 
 async function getRefByTagName(octokit, tagName) {
@@ -134,6 +140,7 @@ async function getTag(octokit, sha) {
 const fs = require('fs')
 const reSemverInHeading = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)/
 const reSemver = /^v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
+const reSemverRaw = /^((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
 
 function parseSemver(text) {
   const matches = text.match(reSemver)
