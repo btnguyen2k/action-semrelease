@@ -1,6 +1,7 @@
 module.exports = {
   deleteRefSilently,
   getAllBranches,
+  getCommit,
   getAllCommits,
   getReleaseByTag,
   findLatestRelease,
@@ -43,6 +44,22 @@ async function getAllBranches(octokit) {
     params.page++
   }
   return branches
+}
+
+async function getCommit(octokit, sha) {
+  try {
+    const {data: commitInfo} = await octokit.rest.git.getCommit({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      commit_sha: sha,
+    })
+    return commitInfo
+  } catch (error) {
+    if (error.status === 404) {
+      return null
+    }
+    throw error
+  }
 }
 
 async function getAllCommits(octokit, filter = {}) {

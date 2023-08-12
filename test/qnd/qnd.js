@@ -19,6 +19,8 @@ async function main() {
 
   const tag = await utils.findLatestTag(octokit, 'semver/v')
   console.log('tag:', tag)
+  const commit = await utils.getCommit(octokit, tag.commit.sha)
+  console.log('commit:', commit)
 }
 
 main()

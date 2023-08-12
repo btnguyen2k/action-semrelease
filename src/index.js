@@ -144,8 +144,17 @@ async function computeReleaseNotes(octokit, tagPrefix) {
     filterCommits.since = latestRelease.created_at
     core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> at <${latestRelease.created_at}>`)
   } else {
-    lastVersion = utils.parseSemver('0.0.0')
-    core.info(`ℹ️ No release found for tag-prefix <${tagPrefix}>`)
+    core.info(`⚠️ No release found for tag-prefix <${tagPrefix}>, checking tags...`)
+    const latestTag = await utils.findLatestTag(octokit, tagPrefix)
+    if (latestTag) {
+      lastVersion = utils.parseSemver(latestTag.name)
+      const commit = await utils.getCommit(octokit, latestTag.commit.sha)
+      filterCommits.since = commit.committer.date
+      core.info(`ℹ️ Found latest tag <${latestTag.name}> at <${commit.committer.date}>`)
+    } else {
+      lastVersion = utils.parseSemver('0.0.0')
+      core.info(`ℹ️ No release/tag found for tag-prefix <${tagPrefix}>`)
+    }
   }
 
   const branches = optBranches()

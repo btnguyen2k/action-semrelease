@@ -111,6 +111,14 @@ describe('must error', () => {
     }
   })
 
+  test('test findLatestTag', async() => {
+    try {
+      await utils.findLatestTag(octokit, 'v')
+    } catch (error) {
+      expect(error.status === 401 || error.status === 403).toBeTruthy()
+    }
+  })
+
   test('test getTag', async() => {
     try {
       await utils.getTag(octokit, 'v1.0.0')
@@ -189,6 +197,15 @@ describe('with octokit', () => {
   test('test getReleaseByTag - exists', async() => {
     const release = await utils.getReleaseByTag(octokit, 'v1.0.0')
     expect(release).not.toBeNull()
+  })
+
+  test('test findLatestTag', async() => {
+    const tag = await utils.findLatestTag(octokit, 'v')
+    expect(tag).not.toBeNull()
+  })
+  test('test findLatestTag - not-found', async() => {
+    const tag = await utils.findLatestTag(octokit, 'nf')
+    expect(tag).toBeNull()
   })
 
   test('test getTag - not-exists', async() => {
