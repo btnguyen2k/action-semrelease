@@ -1,5 +1,11 @@
 # SemRelease release notes
 
+## 2023-08-12 - v3.1.1
+
+### Fixed/Improvement
+
+- Fix: version from tag_name is incorrectly parsed
+
 ## 2023-08-12 - v3.1.0
 
 ### Added/Refactoring
