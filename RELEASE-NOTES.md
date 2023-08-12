@@ -1,5 +1,13 @@
 # SemRelease release notes
 
+## 2023-08-12 - v3.1.0
+
+### Added/Refactoring
+
+- Feature: do not create release if tag-only=true
+- Feature: fallback to scanning tags if no release found for tag-prefix
+- Add new input tag-only
+
 ## 2023-08-12 - v3.0.0
 
 ### Changed
