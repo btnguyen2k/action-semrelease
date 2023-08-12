@@ -6,6 +6,24 @@ test('parse release notes', () => {
   expect(releaseNotes).toBeDefined()
 })
 
+test('incMajorSemver', () => {
+  const version = {
+    semver: '1.2.3-rc.1',
+    major: '1',
+    minor: '2',
+    patch: '3',
+    prerelease: 'rc.1',
+  }
+  const expected = {
+    semver: '2.0.0',
+    major: '2',
+    minor: '0',
+    patch: '0',
+    prerelease: '',
+  }
+  expect(utils.incMajorSemver(version)).toEqual(expected)
+})
+
 function getOctokitInstance() {
   const githubToken = process.env['GITHUB_TOKEN'] || ''
   if (!githubToken) {
