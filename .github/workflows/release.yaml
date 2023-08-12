@@ -3,7 +3,7 @@ name: "release"
 
 on:
   workflow_run:
-    workflows: [ "ensure dist/" ]
+    workflows: [ "prerelease" ]
     types: [ "completed" ]
 
 jobs:
@@ -21,34 +21,9 @@ jobs:
       - name: SemRelease
         id: semrelease
         uses: btnguyen2k/action-semrelease@v2
-        # uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           tag-major-release: true
           tag-minor-release: true
           auto-mode: true
           branches: main,dev
-      - name: Update RELEASE-NOTES.md and package.json
-        run: |
-          RESULT='${{ steps.semrelease.outputs.result }}'
-          if [ "${RESULT}" == "SUCCESS" ]; then
-            DATE=`date +%Y-%m-%d`
-            VERSION='${{ steps.semrelease.outputs.releaseVersion }}'
-            RELEASE_NOTES='${{ steps.semrelease.outputs.releaseNotes }}'
-            head -1 RELEASE-NOTES.md > .temp.md
-            echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
-            tail -n +2 RELEASE-NOTES.md >> .temp.md
-            mv -f .temp.md RELEASE-NOTES.md
-            echo ========== content of RELEASE-NOTES.md ==========
-            cat RELEASE-NOTES.md
-            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
-            echo ========== content of package.json ==========
-            cat package.json
-            echo ========== commit updates ==========
-            git config --global user.email "<>"
-            git config --global user.name "CI Build"
-            git commit -am "Update RELEASE-NOTES.md and package.json for new version ${VERSION}"
-            git push
-          else
-            echo "SKIPPED."
-          fi

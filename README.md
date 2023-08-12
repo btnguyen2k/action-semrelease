@@ -63,6 +63,7 @@ This action scans commit messages to determine to release a new version. Release
 | Fixed typo in function `HashUtils::hashMd5()`                          | New patch release |
 | Patched: function `HashUtils::Crc32()` now returns correct value       | New patch release |
 | Improve performance of function `HashUtils::hashChain()`               | New patch release |
+| Dependency: bump `krypto` to v1.2.3                                    | New patch release |
 | Security: fix potential SQLi security vulnerability in class `DbUtils` | New patch release |
 
 ## Inputs

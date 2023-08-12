@@ -131,19 +131,21 @@ const reFeatureMsg = /^[^a-z]*(new\s+)?feat(ure)?(\([^)]+\)\s*)?:?\s+/i
 const reFixMsg = /^[^a-z]*fix(ed)?(\([^)]+\)\s*)?:?\s+/i
 const rePatchMsg = /^[^a-z]*patch(ed)?(\([^)]+\)\s*)?:?\s+/i
 const reImprove = /^[^a-z]*improve(d|ment)?(\([^)]+\)\s*)?:?\s+/i
-const reBump = /^[^a-z]*bump(ed)?(\([^)]+\)\s*)?:?\s+/i
+const reDependency = /^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
 
 const reSecurityMsg = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 
-async function computeReleaseNotes(octokit) {
+async function computeReleaseNotes(octokit, tagPrefix) {
   let lastVersion = null
   const filterCommits = {}
-  const latestRelease = await utils.getLatestRelease(octokit)
+  const latestRelease = await utils.findLatestRelease(octokit, tagPrefix)
   if (latestRelease) {
     lastVersion = utils.parseSemver(latestRelease.tag_name)
     filterCommits.since = latestRelease.created_at
+    core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> at <${latestRelease.created_at}>`)
   } else {
     lastVersion = utils.parseSemver('0.0.0')
+    core.info(`ℹ️ No release found for tag-prefix <${tagPrefix}>`)
   }
 
   const branches = optBranches()
@@ -169,26 +171,32 @@ async function computeReleaseNotes(octokit) {
   const securityMessages = []
   for (const msg of messages) {
     if (msg.match(reBreak) || msg.match(reChanged) || msg.match(reReplaced)) {
+      core.info(`⤴️ Detected breaking change from commit message: ${msg}`)
       changedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reRemoved)) {
+      core.info(`⤴️ Detected breaking change from commit message: ${msg}`)
       removedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reDeprecated)) {
+      core.info(`⤴️ Detected deprecated update from commit message: ${msg}`)
       deprecatedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reRefactor) || msg.match(reAddMsg) || msg.match(reFeatureMsg)) {
+      core.info(`⤴️ Detected new feature/refactoring update from commit message: ${msg}`)
       addedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
-    if (msg.match(reFixMsg) || msg.match(rePatchMsg) || msg.match(reImprove) || msg.match(reBump)) {
+    if (msg.match(reFixMsg) || msg.match(rePatchMsg) || msg.match(reImprove) || msg.match(reDependency)) {
+      core.info(`⤴️ Detected bug fix/patch/improvement/dependency update from commit message: ${msg}`)
       fixedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reSecurityMsg)) {
+      core.info(`⤴️ Detected security update from commit message: ${msg}`)
       securityMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
   }
@@ -237,7 +245,7 @@ async function run() {
     }
     const octokit = github.getOctokit(githubToken)
 
-    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit) : utils.parseReleaseNotes()
+    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit, tagPrefix) : utils.parseReleaseNotes()
     if (!releaseNotes) {
       throw new Error('No release version/notes found')
     }
