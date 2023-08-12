@@ -171,26 +171,32 @@ async function computeReleaseNotes(octokit, tagPrefix) {
   const securityMessages = []
   for (const msg of messages) {
     if (msg.match(reBreak) || msg.match(reChanged) || msg.match(reReplaced)) {
+      core.info(`⤴️ Detected breaking change from commit message: ${msg}`)
       changedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reRemoved)) {
+      core.info(`⤴️ Detected breaking change from commit message: ${msg}`)
       removedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reDeprecated)) {
+      core.info(`⤴️ Detected deprecated update from commit message: ${msg}`)
       deprecatedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reRefactor) || msg.match(reAddMsg) || msg.match(reFeatureMsg)) {
+      core.info(`⤴️ Detected new feature/refactoring update from commit message: ${msg}`)
       addedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reFixMsg) || msg.match(rePatchMsg) || msg.match(reImprove) || msg.match(reDependency)) {
+      core.info(`⤴️ Detected bug fix/patch/improvement/dependency update from commit message: ${msg}`)
       fixedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
 
     if (msg.match(reSecurityMsg)) {
+      core.info(`⤴️ Detected security update from commit message: ${msg}`)
       securityMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
     }
   }
