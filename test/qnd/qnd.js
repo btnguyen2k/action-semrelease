@@ -17,10 +17,14 @@ async function main() {
     return
   }
 
-  const tag = await utils.findLatestTag(octokit, 'semver/v')
+  const tag = await utils.findLatestTag(octokit, 'g18/v')
   console.log('tag:', tag)
+
   const commit = await utils.getCommit(octokit, tag.commit.sha)
   console.log('commit:', commit)
+
+  const commits = await utils.getAllCommits(octokit, {since: commit.committer.date, path: 'g18/'})
+  console.log('commits:', commits)
 }
 
 main()

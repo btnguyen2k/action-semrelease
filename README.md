@@ -79,6 +79,7 @@ Inputs are supplied via the `with` block. The following inputs are accepted:
 | tag-prefix               | No       | `'v'`           | Prefix for release tags.                                                    |
 | auto-mode <sup>[1]</sup> | No       | `false`         | If `true`, auto-mode is enabled.                                            |
 | branches                 | No       | `'main,master'` | Comma-separated list of branches to scan commit messages (auto-mode only!). |
+| path                     | No       | `''`            | Scan only commits containing this file path (auto-mode only).               |
 
 > [1] auto-mode is available since version [v2.0.0](RELEASE-NOTES.md).
 
