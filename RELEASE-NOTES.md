@@ -1,5 +1,11 @@
 # SemRelease release notes
 
+## 2023-08-13 - v3.2.0
+
+### Added/Refactoring
+
+- Add new input `path`
+
 ## 2023-08-12 - v3.1.1
 
 ### Fixed/Improvement
