@@ -10090,6 +10090,8 @@ const inputBranches = 'branches'
 const defaultBranches = 'main,master'
 const inputTagOnly = 'tag-only'
 const defaultTagOnly = 'false'
+const inputPath = 'path'
+const defaultPath = ''
 
 const outputReleaseVersion = 'releaseVersion'
 const outputReleaseNotes = 'releaseNotes'
@@ -10210,7 +10212,7 @@ const reDependency = /^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
 
 const reSecurityMsg = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 
-async function computeReleaseNotes(octokit, tagPrefix) {
+async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
   let lastVersion = null
   const filterCommits = {}
   const latestRelease = await utils.findLatestRelease(octokit, tagPrefix)
@@ -10236,7 +10238,11 @@ async function computeReleaseNotes(octokit, tagPrefix) {
   const messages = []
   for (const branch of branches) {
     core.info(`🕘 Fetching commits from branch <${branch}>...`)
-    const commits = await utils.getAllCommits(octokit, {...filterCommits, sha: branch})
+    const params = {...filterCommits, sha: branch}
+    if (scanPath) {
+      params.path = scanPath
+    }
+    const commits = await utils.getAllCommits(octokit, params)
     for (const commit of commits) {
       const commitMsg = commit.commit.message.trim()
       if (messages.some(msg => msg === commitMsg)) {
@@ -10318,12 +10324,14 @@ async function run() {
     const isTagMinorRelease = String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true'
     const tagPrefix = String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix)
     const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
+    const scanPath = String(core.getInput(inputPath) || process.env['SCAN_PATH'] || defaultPath)
     console.log(`ℹ️ isDryRun: ${isDryRun}`)
     console.log(`ℹ️ isAutoMode: ${isAutoMode}`)
     console.log(`ℹ️ isTagOnly: ${isTagOnly}`)
     console.log(`ℹ️ isTagMajorRelease: ${isTagMajorRelease}`)
     console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
     console.log(`ℹ️ tagPrefix: ${tagPrefix}`)
+    console.log(`ℹ️ scanPath: ${scanPath}`)
 
     const githubToken = core.getInput(inputGithubToken) || process.env['GITHUB_TOKEN']
     if (!githubToken) {
@@ -10331,7 +10339,7 @@ async function run() {
     }
     const octokit = github.getOctokit(githubToken)
 
-    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit, tagPrefix) : utils.parseReleaseNotes()
+    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit, tagPrefix, scanPath) : utils.parseReleaseNotes()
     if (!releaseNotes) {
       throw new Error('No release version/notes found')
     }
