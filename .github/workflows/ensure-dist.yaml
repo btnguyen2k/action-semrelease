@@ -53,7 +53,7 @@ jobs:
             git config --global user.name "CI Build"
             git commit -am "build [skip ci]"
             echo "Pushing changes to dist/..."
-            git push
+            git push -f
           else
             echo "No changes detected after build."
           fi
