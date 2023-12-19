@@ -558,7 +558,7 @@ class OidcClient {
                 .catch(error => {
                 throw new Error(`Failed to get ID Token. \n 
         Error Code : ${error.statusCode}\n 
-        Error Message: ${error.result.message}`);
+        Error Message: ${error.message}`);
             });
             const id_token = (_a = res.result) === null || _a === void 0 ? void 0 : _a.value;
             if (!id_token) {
@@ -10195,7 +10195,7 @@ function generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages
   return releaseNotes.trim()
 }
 
-const reBreak = /^[^a-z]*break(king)?(\([^)]+\)\s*)?:?\s+/i
+const reBreak = /^[^a-z]*break(ing)?(\([^)]+\)\s*)?:?\s+/i
 const reChanged = /^[^a-z]*(break(ing)?\s+)?change(d|s)?(\([^)]+\)\s*)?:?\s+/i
 const reRemoved = /^[^a-z]*rem(ove(d)?)?(\([^)]+\)\s*)?:?\s+/i
 const reReplaced = /^[^a-z]*repl(ace(d)?)?(\([^)]+\)\s*)?:?\s+/i
