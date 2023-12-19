@@ -41,7 +41,7 @@ jobs:
           export TAG_PREFIX=vu
           npm run test
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v3
 
   # test action works running from the graph
   test:

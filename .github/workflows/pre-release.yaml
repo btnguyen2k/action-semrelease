@@ -48,7 +48,7 @@ jobs:
             git config --global user.email "<>"
             git config --global user.name "CI Build"
             git commit -am "Update RELEASE-NOTES.md and package.json for new version ${VERSION}"
-            git push
+            git push -f
           else
             echo "SKIPPED."
           fi
