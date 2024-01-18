@@ -1,5 +1,8 @@
-name: "action-semrelease CodeQL config"
+name: "CodeQL config"
 
 paths-ignore:
   - node_modules
   - dist
+
+queries:
+  - uses: security-and-quality

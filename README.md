@@ -20,7 +20,7 @@ This action extract release information either from a release notes or changelog
 
 > `auto-mode` is available since version [v2.0.0](RELEASE-NOTES.md).
 
-### Auto-mode is NOT enabled
+### auto-mode: false (disable auto-mode)
 
 The release notes or changelog file is expected to be in Markdown, with each release information in a section with the following format:
 
@@ -44,7 +44,7 @@ The release notes or changelog file is expected to be in Markdown, with each rel
 `CHANGE_LOG.md`, `CHANGE_LOG.MD`, `CHANGE_LOG`, `changelog.md`, `changelog`, `change-log.md`, `change-log`,
 `change_log.md`, `change_log`.
 
-### Auto-mode is enabled
+### auto-mode: true (enable auto-mode)
 
 This action scans commit messages to determine to release a new version. Release notes are automatically compiled from commit messages.
 
@@ -93,4 +93,11 @@ Inputs are supplied via the `with` block. The following inputs are accepted:
 
 ## License
 
-MIT - See [LICENSE.md](LICENSE.md).
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+
+## Support and Contribution
+
+Feel free to create [pull requests](https://github.com/btnguyen2k/action-semrelease/pulls) or [issues](https://github.com/btnguyen2k/action-semrelease/issues) to report bugs or suggest new features.
+Please search the existing issues before filing new issues to avoid duplicates. For new issues, file your bug or feature request as a new issue.
+
+If you find this project useful, please start it.
