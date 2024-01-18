@@ -311,4 +311,4 @@ async function run() {
   }
 }
 
-run()
+run().then(r => console.log(`✅ ${r}`)).catch(e => console.log(`❌ ${e}`))
