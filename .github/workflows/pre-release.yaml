@@ -35,15 +35,18 @@ jobs:
             DATE=`date +%Y-%m-%d`
             VERSION='${{ steps.semrelease.outputs.releaseVersion }}'
             RELEASE_NOTES='${{ steps.semrelease.outputs.releaseNotes }}'
+
             head -1 RELEASE-NOTES.md > .temp.md
             echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
             mv -f .temp.md RELEASE-NOTES.md
             echo ========== content of RELEASE-NOTES.md ==========
             cat RELEASE-NOTES.md
+
             sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
             echo ========== content of package.json ==========
             cat package.json
+
             echo ========== commit updates ==========
             git config --global user.email "<>"
             git config --global user.name "CI Build"
