@@ -123,7 +123,7 @@ function generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages
 }
 
 const reBreak = /^[^a-z]*break(ing)?(\([^)]+\)\s*)?:?\s+/i
-const reChanged = /^[^a-z]*(break(ing)?\s+)?change(d|s)?(\([^)]+\)\s*)?:?\s+/i
+const reChanged = /^[^a-z]*(break(ing)?\s+)?change([ds])?(\([^)]+\)\s*)?:?\s+/i
 const reRemoved = /^[^a-z]*rem(ove(d)?)?(\([^)]+\)\s*)?:?\s+/i
 const reReplaced = /^[^a-z]*repl(ace(d)?)?(\([^)]+\)\s*)?:?\s+/i
 
@@ -140,7 +140,7 @@ const reDependency = /^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
 const reSecurityMsg = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 
 async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
-  let lastVersion = null
+  let lastVersion
   const filterCommits = {}
   const latestRelease = await utils.findLatestRelease(octokit, tagPrefix)
   if (latestRelease) {
@@ -294,7 +294,7 @@ async function run() {
       await createTag(octokit, `${tagPrefix}${releaseNotes.release_version.major}.${releaseNotes.release_version.minor}`, isDryRun)
     }
 
-    const isPrerelease = releaseNotes.release_version.prerelease != ''
+    const isPrerelease = releaseNotes.release_version.prerelease !== ''
     core.info(`ℹ️ Release notes:\n${releaseNotes.release_notes}`)
     core.setOutput(outputReleaseNotes, releaseNotes.release_notes)
     if (!isTagOnly) {
@@ -311,4 +311,4 @@ async function run() {
   }
 }
 
-run().then(r => console.log(`✅ ${r}`)).catch(e => console.log(`❌ ${e}`))
+run().then(r => console.log(`✅ DONE.`)).catch(e => console.log(`❌ ${e}`))
