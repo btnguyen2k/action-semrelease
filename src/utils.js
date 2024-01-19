@@ -32,8 +32,9 @@ async function deleteRefSilently(octokit, ref) {
   }
 }
 
-async function getAllBranches(octokit) {
-  const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+async function getAllBranches(octokit, overrideParams) {
+  const defaultParams = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+  const params = overrideParams ? {...defaultParams, ...overrideParams} : defaultParams
   const branches = []
   for (;;) {
     const {data: page} = await octokit.rest.repos.listBranches(params)
@@ -62,8 +63,9 @@ async function getCommit(octokit, sha) {
   }
 }
 
-async function getAllCommits(octokit, filter = {}) {
-  const params = {...filter, owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+async function getAllCommits(octokit, overrideParams) {
+  const defaultParams = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
+  const params = overrideParams ? {...defaultParams, ...overrideParams} : defaultParams
   const commits = []
   try {
     for (; ;) {
