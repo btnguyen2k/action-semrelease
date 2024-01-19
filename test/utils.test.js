@@ -1,6 +1,5 @@
 const utils = require('../src/utils')
 const github = require('@actions/github')
-const {setFailed} = require("@actions/core");
 
 test('parse release-notes', () => {
   const releaseNotes = utils.parseReleaseNotes()
