@@ -139,6 +139,38 @@ const reDependency = /^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
 
 const reSecurityMsg = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 
+const commitLogsFile = '.semrelease/this_release'
+async function loadCommitMessagesFromFile() {
+  if (fs.existsSync(commitLogsFile)) {
+    console.log(`ℹ️ Loading commit messages from file ${commitLogsFile}...`)
+    return fs.readFileSync(commitLogsFile, 'utf8').split('\n')
+  }
+  return null
+}
+
+async function loadCommitMessagesFromRepo(octokit, branches, filterCommits, scanPath) {
+  const commitMessages = []
+  const commitMessagesMap = {}
+  for (const branch of branches) {
+    core.info(`🕘 Fetching commits from branch <${branch}>...`)
+    const params = {...filterCommits, sha: branch}
+    if (scanPath) {
+      params.path = scanPath
+    }
+    const commits = await utils.getAllCommits(octokit, params)
+    for (const commit of commits) {
+      const commitMsg = commit.commit.message.trim()
+      if (commitMessagesMap[commitMsg]) {
+        // prevent duplicated messages
+        continue
+      }
+      commitMessages.push(commitMsg)
+      commitMessagesMap[commitMsg] = true
+    }
+  }
+  return commitMessages
+}
+
 async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
   let lastVersion
   const filterCommits = {}
@@ -146,7 +178,7 @@ async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
   if (latestRelease) {
     lastVersion = utils.parseSemver(latestRelease.tag_name.slice(tagPrefix.length))
     filterCommits.since = latestRelease.created_at
-    core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> at <${latestRelease.created_at}>`)
+    core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> (tag ${latestRelease.tag_name}) at <${latestRelease.created_at}>`)
   } else {
     core.info(`⚠️ No release found for tag-prefix <${tagPrefix}>, checking tags...`)
     const latestTag = await utils.findLatestTag(octokit, tagPrefix)
@@ -161,23 +193,10 @@ async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
     }
   }
 
-  const branches = optBranches()
-  const messages = []
-  for (const branch of branches) {
-    core.info(`🕘 Fetching commits from branch <${branch}>...`)
-    const params = {...filterCommits, sha: branch}
-    if (scanPath) {
-      params.path = scanPath
-    }
-    const commits = await utils.getAllCommits(octokit, params)
-    for (const commit of commits) {
-      const commitMsg = commit.commit.message.trim()
-      if (messages.some(msg => msg === commitMsg)) {
-        // prevent duplicated messages
-        continue
-      }
-      messages.push(commitMsg)
-    }
+  let commitMessages = await loadCommitMessagesFromFile()
+  if (!commitMessages || commitMessages.length === 0) {
+    console.log(`ℹ️ No commit messages found in file ${commitLogsFile}, loading commit messages from repo...`)
+    commitMessages = await loadCommitMessagesFromRepo(octokit, optBranches(), filterCommits, scanPath)
   }
 
   const changedMessages = []
@@ -186,7 +205,7 @@ async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
   const deprecatedMessages = []
   const fixedMessages = []
   const securityMessages = []
-  for (const msg of messages) {
+  for (const msg of commitMessages) {
     if (msg.match(reBreak) || msg.match(reChanged) || msg.match(reReplaced)) {
       core.info(`⤴️ Detected breaking change from commit message: ${msg}`)
       changedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
