@@ -6,6 +6,11 @@ test('parse release-notes', () => {
   expect(releaseNotes).toBeDefined()
 })
 
+test('parse release-notes - specific changelog file', () => {
+  const releaseNotes = utils.parseReleaseNotes('testdata/CHANGELOG.md')
+  expect(releaseNotes).toBeDefined()
+})
+
 test('parse release-notes from change-log file', () => {
   const save = process.cwd()
   try {
