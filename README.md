@@ -66,7 +66,7 @@ This action scans commit messages to determine to release a new version. Release
 | Dependency: bump `krypto` to v1.2.3                                    | New patch release |
 | Security: fix potential SQLi security vulnerability in class `DbUtils` | New patch release |
 
-If the file `.semrelease/this_release` exists, commit messages are pulled from this file, with one commit message per line.
+Since [<<VERSION>>](RELEASE-NOTES.md), if the file `.semrelease/this_release` exists, commit messages are pulled from this file, with one commit message per line.
 Otherwise, commit messages are pulled from the GitHub repository.
 
 > The rules exemplified in the table above are applied to commit messages found in both the file `.semrelease/this_release` and the commit messages in the GitHub repository.
