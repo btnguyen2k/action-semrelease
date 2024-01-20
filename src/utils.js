@@ -239,7 +239,11 @@ const changelogFilenames = [
   "change_log.md", "change_log",
 ]
 
-function parseReleaseNotes() {
+function parseReleaseNotes(changelogFile) {
+  if (changelogFile && fs.existsSync(changelogFile)) {
+    return parse(changelogFile)
+  }
+
   for (const file of releaseNotesFilenames) {
     if (fs.existsSync(file)) {
       const result = parse(file)
@@ -251,6 +255,7 @@ function parseReleaseNotes() {
       return result
     }
   }
+
   for (const file of changelogFilenames) {
     if (fs.existsSync(file)) {
       return parse(file)

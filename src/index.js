@@ -2,6 +2,7 @@ const core = require('@actions/core')
 const github = require('@actions/github')
 const utils = require('./utils')
 
+/* inputs and default values */
 const inputDryRun = 'dry-run'
 const defaultDryRun = 'false'
 const inputAutoMode = 'auto-mode'
@@ -19,7 +20,10 @@ const inputTagOnly = 'tag-only'
 const defaultTagOnly = 'false'
 const inputPath = 'path'
 const defaultPath = ''
+const inputChangelogFile = 'changelog-file'
+const defaultChangelogFile = ''
 
+/* outputs */
 const outputReleaseVersion = 'releaseVersion'
 const outputReleaseNotes = 'releaseNotes'
 const outputResult = 'result'
@@ -271,6 +275,7 @@ async function run() {
     const tagPrefix = String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix)
     const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
     const scanPath = String(core.getInput(inputPath) || process.env['SCAN_PATH'] || defaultPath)
+    const changelogFile = String(core.getInput(inputChangelogFile) || process.env['CHANGELOG_FILE'] || defaultChangelogFile)
     console.log(`ℹ️ isDryRun: ${isDryRun}`)
     console.log(`ℹ️ isAutoMode: ${isAutoMode}`)
     console.log(`ℹ️ isTagOnly: ${isTagOnly}`)
@@ -278,6 +283,7 @@ async function run() {
     console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
     console.log(`ℹ️ tagPrefix: ${tagPrefix}`)
     console.log(`ℹ️ scanPath: ${scanPath}`)
+    console.log(`ℹ️ changelogFile: ${changelogFile}`)
 
     const githubToken = core.getInput(inputGithubToken) || process.env['GITHUB_TOKEN']
     if (!githubToken) {
@@ -285,7 +291,7 @@ async function run() {
     }
     const octokit = github.getOctokit(githubToken)
 
-    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit, tagPrefix, scanPath) : utils.parseReleaseNotes()
+    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit, tagPrefix, scanPath) : utils.parseReleaseNotes(changelogFile)
     if (!releaseNotes) {
       throw new Error('No release version/notes found')
     }
