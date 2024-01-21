@@ -125,9 +125,9 @@ jobs:
           tag-prefix: v
       - name: Check output (dry-run)
         run: |
-          RESULT='${{ steps.run-action-auto-mode.outputs.result }}'
-          VERSION='${{ steps.run-action-auto-mode.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-auto-mode.outputs.releaseNotes }}'
+          RESULT='${{ steps.run-action-dry-run.outputs.result }}'
+          VERSION='${{ steps.run-action-dry-run.outputs.releaseVersion }}'
+          RELEASE_NOTES='${{ steps.run-action-dry-run.outputs.releaseNotes }}'
           echo -e Result: ${RESULT}
           echo -e Version: ${VERSION}
           echo -e Release Notes: ${RELEASE_NOTES}
