@@ -1,5 +1,12 @@
 # SemRelease release notes
 
+## 2024-01-21 - v3.3.0
+
+### Added/Refactoring
+
+- Add new input changelog-file
+- Feature: Load custom commit messages from file .semrelease/this_release
+
 ## 2023-12-19 - v3.2.1
 
 ### Fixed/Improvement
