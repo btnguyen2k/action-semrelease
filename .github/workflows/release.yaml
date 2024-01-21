@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
       - name: SemRelease
         id: semrelease
-        uses: btnguyen2k/action-semrelease@v3
+        uses: ./ # The repo itself is the action, and is always the latest
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           tag-major-release: true
