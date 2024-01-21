@@ -37,6 +37,7 @@ jobs:
             git config --global user.name "CI Build"
             git commit -am "Cleanup file .semrelease/this_release post releasing version ${VERSION}"
             git push -f
+            echo "✅ Done."
           else
             echo "❎ SKIPPED."
           fi
