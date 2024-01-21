@@ -59,6 +59,8 @@ jobs:
             git config --global user.name "CI Build"
             git commit -am "Update RELEASE-NOTES.md and package.json for new version ${VERSION}"
             git push -f
+
+            echo "✅ Done."
           else
-            echo "SKIPPED."
+            echo "❎ SKIPPED."
           fi

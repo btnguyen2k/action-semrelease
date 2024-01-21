@@ -27,3 +27,16 @@ jobs:
           tag-minor-release: true
           auto-mode: true
           branches: main,dev
+      - name: Cleanup file .semrelease/this_release
+        run: |
+          RESULT='${{ steps.semrelease.outputs.result }}'
+          if [ "${RESULT}" == "SUCCESS" ]; then
+            echo "🕘 Cleaning up file .semrelease/this_release..."
+            echo > .semrelease/this_release
+            git config --global user.email "<>"
+            git config --global user.name "CI Build"
+            git commit -am "Cleanup file .semrelease/this_release post releasing version ${VERSION}"
+            git push -f
+          else
+            echo "❎ SKIPPED."
+          fi
