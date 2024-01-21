@@ -9,7 +9,7 @@ GitHub Action to publish releases using tags, following semantic versioning.
 ## Usage
 
 ```yaml
-uses: btnguyen2k/action-semrelease@v1
+uses: btnguyen2k/action-semrelease@v3
 with:
   github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
