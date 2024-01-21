@@ -31,6 +31,7 @@ jobs:
         run: |
           RESULT='${{ steps.semrelease.outputs.result }}'
           if [ "${RESULT}" == "SUCCESS" ]; then
+            VERSION='${{ steps.semrelease.outputs.releaseVersion }}'
             echo "🕘 Cleaning up file .semrelease/this_release..."
             echo > .semrelease/this_release
             git config --global user.email "<>"
