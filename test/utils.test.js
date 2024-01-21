@@ -1,9 +1,25 @@
 const utils = require('../src/utils')
 const github = require('@actions/github')
 
-test('parse release notes', () => {
+test('parse release-notes', () => {
   const releaseNotes = utils.parseReleaseNotes()
   expect(releaseNotes).toBeDefined()
+})
+
+test('parse release-notes - specific changelog file', () => {
+  const releaseNotes = utils.parseReleaseNotes('testdata/CHANGELOG.md')
+  expect(releaseNotes).toBeDefined()
+})
+
+test('parse release-notes from change-log file', () => {
+  const save = process.cwd()
+  try {
+    process.chdir('testdata/')
+    const releaseNotes = utils.parseReleaseNotes()
+    expect(releaseNotes).toBeDefined()
+  } finally {
+    process.chdir(save)
+  }
 })
 
 test('incMajorSemver', () => {
@@ -60,6 +76,23 @@ test('incPatchSemver', () => {
   expect(utils.incPatchSemver(version)).toEqual(expected)
 })
 
+test('parseSemver', () => {
+  const version = '1.2.3-rc.1'
+  const expected = {
+    semver: '1.2.3-rc.1',
+    major: '1',
+    minor: '2',
+    patch: '3',
+    prerelease: 'rc.1',
+  }
+  expect(utils.parseSemver(version)).toEqual(expected)
+})
+
+test('parseSemver - null', () => {
+  const version = '1.2.3.invalid'
+  expect(utils.parseSemver(version)).toBeNull()
+})
+
 function getOctokitInstance() {
   const githubToken = process.env['GITHUB_TOKEN'] || ''
   if (!githubToken) {
@@ -82,6 +115,14 @@ describe('must error', () => {
   test('test getAllCommits', async() => {
     try {
       await utils.getAllCommits(octokit)
+    } catch (error) {
+      expect(error.status === 401 || error.status === 403).toBeTruthy()
+    }
+  })
+
+  test('test getCommit', async() => {
+    try {
+      await utils.getCommit(octokit)
     } catch (error) {
       expect(error.status === 401 || error.status === 403).toBeTruthy()
     }
@@ -156,17 +197,36 @@ describe('with octokit', () => {
     }
     expect(Object.keys(testBranches).length).toBe(0)
   })
+  test('test getAllBranches - long', async() => {
+    const branches = await utils.getAllBranches(octokit, {owner: 'btnguyen2k', repo: 'long-repo', per_page: 10})
+    expect(branches.length).toBeGreaterThan(100)
+  })
 
   test('test getAllCommits', async() => {
     const commits = await utils.getAllCommits(octokit, {sha: 'main'})
     expect(commits.length).toBeGreaterThan(0)
+  })
+  test('test getAllCommits - long', async() => {
+    const commits = await utils.getAllCommits(octokit, {owner: 'btnguyen2k', repo: 'long-repo', sha: 'main'})
+    expect(commits.length).toBeGreaterThan(0)
+  })
+
+  test('test getCommit', async() => {
+    const tagInfo = await utils.findLatestTag(octokit, 'v')
+    expect(tagInfo).not.toBeNull()
+
+    const commitInfo = await utils.getCommit(octokit, tagInfo.commit.sha)
+    expect(commitInfo).not.toBeNull()
+  })
+  test('test getCommit - not-exists', async() => {
+    const commitInfo = await utils.getCommit(octokit, 'not-exists')
+    expect(commitInfo).toBeNull()
   })
 
   test('test getReleaseByTag - not-exists', async() => {
     const releaseInfo = await utils.getReleaseByTag(octokit, 'vNotExists')
     expect(releaseInfo).toBeNull()
   })
-
   test('test getReleaseByTag - exists', async() => {
     const releaseInfo = await utils.getReleaseByTag(octokit, 'v1.0.0')
     expect(releaseInfo).not.toBeNull()
@@ -176,6 +236,16 @@ describe('with octokit', () => {
     const release = await utils.findLatestRelease(octokit, 'v')
     expect(release).not.toBeNull()
   })
+  // test('test findLatestRelease - long', async() => {
+  //   const saved = process.env['GITHUB_REPOSITORY']
+  //   try {
+  //     process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/long-repo'
+  //     const release = await utils.findLatestRelease(octokit, 'v')
+  //     expect(release).not.toBeNull()
+  //   } finally {
+  //     process.env['GITHUB_REPOSITORY'] = saved
+  //   }
+  // })
   test('test findLatestRelease - not-found', async() => {
     const release = await utils.findLatestRelease(octokit, 'nf')
     expect(release).toBeNull()

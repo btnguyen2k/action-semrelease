@@ -1,0 +1,2 @@
+- Add new input changelog-file
+- Feature: Load custom commit messages from file .semrelease/this_release

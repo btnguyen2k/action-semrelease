@@ -42,8 +42,10 @@ jobs:
           npm run test
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # test action works running from the graph
+  # test the action itself
   test:
     runs-on: ubuntu-latest
     steps:
@@ -75,7 +77,7 @@ jobs:
           if [ "${RESULT}" == "SUCCESS" ]; then
             cp -f package.json package.json.bak
             sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
-            echo ========== content of package.json ==========
+            echo ---------- content of package.json ----------
             cat package.json
             cp -f package.json.bak package.json
           fi
@@ -104,10 +106,43 @@ jobs:
             echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
             mv -f .temp.md RELEASE-NOTES.md
-            echo ========== content of RELEASE-NOTES.md ==========
+            echo ---------- content of RELEASE-NOTES.md ----------
             cat RELEASE-NOTES.md
             sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
-            echo ========== content of package.json ==========
+            echo ---------- content of package.json ----------
+            cat package.json
+            cp -f RELEASE-NOTES.md.bak RELEASE-NOTES.md
+            cp -f package.json.bak package.json
+          fi
+      - name: Run Action (dry-run)
+        id: run-action-dry-run
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: true
+          auto-mode: true
+          branches: main, dev, not-exists
+          tag-prefix: v
+      - name: Check output (dry-run)
+        run: |
+          RESULT='${{ steps.run-action-dry-run.outputs.result }}'
+          VERSION='${{ steps.run-action-dry-run.outputs.releaseVersion }}'
+          RELEASE_NOTES='${{ steps.run-action-dry-run.outputs.releaseNotes }}'
+          echo -e Result: ${RESULT}
+          echo -e Version: ${VERSION}
+          echo -e Release Notes: ${RELEASE_NOTES}
+          if [ "${RESULT}" == "SUCCESS" ]; then
+            DATE=`date +%Y-%m-%d`
+            cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
+            cp -f package.json package.json.bak
+            head -1 RELEASE-NOTES.md > .temp.md
+            echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
+            tail -n +2 RELEASE-NOTES.md >> .temp.md
+            mv -f .temp.md RELEASE-NOTES.md
+            echo ---------- content of RELEASE-NOTES.md ----------
+            cat RELEASE-NOTES.md
+            sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
+            echo ---------- content of package.json ----------
             cat package.json
             cp -f RELEASE-NOTES.md.bak RELEASE-NOTES.md
             cp -f package.json.bak package.json

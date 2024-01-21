@@ -66,22 +66,39 @@ This action scans commit messages to determine to release a new version. Release
 | Dependency: bump `krypto` to v1.2.3                                    | New patch release |
 | Security: fix potential SQLi security vulnerability in class `DbUtils` | New patch release |
 
+Since [<<VERSION>>](RELEASE-NOTES.md), if the file `.semrelease/this_release` exists, commit messages are pulled from this file, with one commit message per line.
+Otherwise, commit messages are pulled from the GitHub repository.
+
+> The rules exemplified in the table above are applied to commit messages found in both the file `.semrelease/this_release` and the commit messages in the GitHub repository.
+
+- This action leaves the file `.semrelease/this_release` intact after execution. Remember to update the file content if necessary.
+- The content of the file `.semrelease/this_release` can be quickly generated using the following command:
+
+```shell
+$ git log origin..HEAD | grep "^\s" > .semrelease/this_release
+```
+
 ## Inputs
 
 Inputs are supplied via the `with` block. The following inputs are accepted:
 
-| Input                    | Required | Default         | Description                                                                 |
-|--------------------------|----------|-----------------|-----------------------------------------------------------------------------|
-| github-token             | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                      |
-| dry-run                  | No       | `false`         | If `true`, the action will run in dry-run mode.                             |
-| tag-major-release        | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                   |
-| tag-minor-release        | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                 |
-| tag-prefix               | No       | `'v'`           | Prefix for release tags.                                                    |
-| auto-mode <sup>[1]</sup> | No       | `false`         | If `true`, auto-mode is enabled.                                            |
-| branches                 | No       | `'main,master'` | Comma-separated list of branches to scan commit messages (auto-mode only!). |
-| path                     | No       | `''`            | Scan only commits containing this file path (auto-mode only).               |
+| Input                         | Required | Default         | Description                                                                   |
+|-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
+| github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
+| dry-run                       | No       | `false`         | If `true`, the action will run in dry-run mode.                               |
+| tag-major-release             | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                     |
+| tag-minor-release             | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                   |
+| tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
+| auto-mode <sup>[1]</sup>      | No       | `false`         | If `true`, _auto-mode_ is enabled.                                            |
+|                               |          |                 |                                                                               |
+| branches                      | No       | `'main,master'` | Comma-separated list of branches to scan commit messages (_auto-mode_ only!). |
+| path                          | No       | `''`            | Scan only commits containing this file path (_auto-mode_ only).               |
+|                               |          |                 |                                                                               |
+| changelog-file <sup>[2]</sup> | No       | `''`            | Path to changelog file (_non auto-mode_ only).                                |
 
-> [1] auto-mode is available since version [v2.0.0](RELEASE-NOTES.md).
+[1] `auto-mode` is available since [v2.0.0](RELEASE-NOTES.md).
+
+[2] `changelog-file` is available since [<<VERSION>>](RELEASE-NOTES.md).
 
 ## Outputs
 

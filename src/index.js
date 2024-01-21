@@ -2,6 +2,7 @@ const core = require('@actions/core')
 const github = require('@actions/github')
 const utils = require('./utils')
 
+/* inputs and default values */
 const inputDryRun = 'dry-run'
 const defaultDryRun = 'false'
 const inputAutoMode = 'auto-mode'
@@ -19,7 +20,10 @@ const inputTagOnly = 'tag-only'
 const defaultTagOnly = 'false'
 const inputPath = 'path'
 const defaultPath = ''
+const inputChangelogFile = 'changelog-file'
+const defaultChangelogFile = ''
 
+/* outputs */
 const outputReleaseVersion = 'releaseVersion'
 const outputReleaseNotes = 'releaseNotes'
 const outputResult = 'result'
@@ -123,7 +127,7 @@ function generateReleaseNotes(addedMessages, changedMessages, deprecatedMessages
 }
 
 const reBreak = /^[^a-z]*break(ing)?(\([^)]+\)\s*)?:?\s+/i
-const reChanged = /^[^a-z]*(break(ing)?\s+)?change(d|s)?(\([^)]+\)\s*)?:?\s+/i
+const reChanged = /^[^a-z]*(break(ing)?\s+)?change([ds])?(\([^)]+\)\s*)?:?\s+/i
 const reRemoved = /^[^a-z]*rem(ove(d)?)?(\([^)]+\)\s*)?:?\s+/i
 const reReplaced = /^[^a-z]*repl(ace(d)?)?(\([^)]+\)\s*)?:?\s+/i
 
@@ -139,14 +143,51 @@ const reDependency = /^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
 
 const reSecurityMsg = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 
+const commitLogsFile = '.semrelease/this_release'
+async function loadCommitMessagesFromFile() {
+  if (fs.existsSync(commitLogsFile)) {
+    console.log(`ℹ️ Loading commit messages from file ${commitLogsFile}...`)
+    let commitLogs = fs.readFileSync(commitLogsFile, 'utf8').split('\n')
+    // trim spaces, leading bullet chars (- and =) && remove empty lines
+    commitLogs = commitLogs.map(line => line.replace(/^[\s=-]*/, '').trim()).filter(line => line !== '')
+    return commitLogs
+  }
+  return null
+}
+
+async function loadCommitMessagesFromRepo(octokit, branches, filterCommits, scanPath) {
+  const commitMessages = []
+  const commitMessagesMap = {}
+  for (const branch of branches) {
+    core.info(`🕘 Fetching commits from branch <${branch}>...`)
+    const params = {...filterCommits, sha: branch}
+    if (scanPath) {
+      params.path = scanPath
+    }
+    const commits = await utils.getAllCommits(octokit, params)
+    for (const commit of commits) {
+      // trim spaces, leading bullet chars (- and =)
+      const commitMsg = commit.commit.message.replace(/^[\s=-]*/, '').trim()
+      if (commitMessagesMap[commitMsg]) {
+        // prevent duplicated messages
+        continue
+      }
+      commitMessages.push(commitMsg)
+      commitMessagesMap[commitMsg] = true
+    }
+  }
+  // remove empty lines
+  return commitMessages.filter(line => line !== '')
+}
+
 async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
-  let lastVersion = null
+  let lastVersion
   const filterCommits = {}
   const latestRelease = await utils.findLatestRelease(octokit, tagPrefix)
   if (latestRelease) {
     lastVersion = utils.parseSemver(latestRelease.tag_name.slice(tagPrefix.length))
     filterCommits.since = latestRelease.created_at
-    core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> at <${latestRelease.created_at}>`)
+    core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> (tag ${latestRelease.tag_name}) at <${latestRelease.created_at}>`)
   } else {
     core.info(`⚠️ No release found for tag-prefix <${tagPrefix}>, checking tags...`)
     const latestTag = await utils.findLatestTag(octokit, tagPrefix)
@@ -161,23 +202,10 @@ async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
     }
   }
 
-  const branches = optBranches()
-  const messages = []
-  for (const branch of branches) {
-    core.info(`🕘 Fetching commits from branch <${branch}>...`)
-    const params = {...filterCommits, sha: branch}
-    if (scanPath) {
-      params.path = scanPath
-    }
-    const commits = await utils.getAllCommits(octokit, params)
-    for (const commit of commits) {
-      const commitMsg = commit.commit.message.trim()
-      if (messages.some(msg => msg === commitMsg)) {
-        // prevent duplicated messages
-        continue
-      }
-      messages.push(commitMsg)
-    }
+  let commitMessages = await loadCommitMessagesFromFile()
+  if (!commitMessages || commitMessages.length === 0) {
+    console.log(`ℹ️ No commit messages found in file ${commitLogsFile}, loading commit messages from repo...`)
+    commitMessages = await loadCommitMessagesFromRepo(octokit, optBranches(), filterCommits, scanPath)
   }
 
   const changedMessages = []
@@ -186,7 +214,7 @@ async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
   const deprecatedMessages = []
   const fixedMessages = []
   const securityMessages = []
-  for (const msg of messages) {
+  for (const msg of commitMessages) {
     if (msg.match(reBreak) || msg.match(reChanged) || msg.match(reReplaced)) {
       core.info(`⤴️ Detected breaking change from commit message: ${msg}`)
       changedMessages.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
@@ -252,6 +280,7 @@ async function run() {
     const tagPrefix = String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix)
     const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
     const scanPath = String(core.getInput(inputPath) || process.env['SCAN_PATH'] || defaultPath)
+    const changelogFile = String(core.getInput(inputChangelogFile) || process.env['CHANGELOG_FILE'] || defaultChangelogFile)
     console.log(`ℹ️ isDryRun: ${isDryRun}`)
     console.log(`ℹ️ isAutoMode: ${isAutoMode}`)
     console.log(`ℹ️ isTagOnly: ${isTagOnly}`)
@@ -259,6 +288,7 @@ async function run() {
     console.log(`ℹ️ isTagMinorRelease: ${isTagMinorRelease}`)
     console.log(`ℹ️ tagPrefix: ${tagPrefix}`)
     console.log(`ℹ️ scanPath: ${scanPath}`)
+    console.log(`ℹ️ changelogFile: ${changelogFile}`)
 
     const githubToken = core.getInput(inputGithubToken) || process.env['GITHUB_TOKEN']
     if (!githubToken) {
@@ -266,7 +296,7 @@ async function run() {
     }
     const octokit = github.getOctokit(githubToken)
 
-    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit, tagPrefix, scanPath) : utils.parseReleaseNotes()
+    const releaseNotes = isAutoMode ? await computeReleaseNotes(octokit, tagPrefix, scanPath) : utils.parseReleaseNotes(changelogFile)
     if (!releaseNotes) {
       throw new Error('No release version/notes found')
     }
@@ -294,7 +324,7 @@ async function run() {
       await createTag(octokit, `${tagPrefix}${releaseNotes.release_version.major}.${releaseNotes.release_version.minor}`, isDryRun)
     }
 
-    const isPrerelease = releaseNotes.release_version.prerelease != ''
+    const isPrerelease = releaseNotes.release_version.prerelease !== ''
     core.info(`ℹ️ Release notes:\n${releaseNotes.release_notes}`)
     core.setOutput(outputReleaseNotes, releaseNotes.release_notes)
     if (!isTagOnly) {
@@ -311,4 +341,4 @@ async function run() {
   }
 }
 
-run()
+run().then(() => console.log(`✅ DONE.`)).catch(e => console.log(`❌ ${e}`))
