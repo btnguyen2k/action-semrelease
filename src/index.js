@@ -147,7 +147,10 @@ const commitLogsFile = '.semrelease/this_release'
 async function loadCommitMessagesFromFile() {
   if (fs.existsSync(commitLogsFile)) {
     console.log(`ℹ️ Loading commit messages from file ${commitLogsFile}...`)
-    return fs.readFileSync(commitLogsFile, 'utf8').split('\n')
+    let commitLogs = fs.readFileSync(commitLogsFile, 'utf8').split('\n')
+    // trim spaces, leading bullet chars (- and =) && remove empty lines
+    commitLogs = commitLogs.map(line => line.replace(/^[\s=-]*/, '').trim()).filter(line => line !== '')
+    return commitLogs
   }
   return null
 }
@@ -163,7 +166,8 @@ async function loadCommitMessagesFromRepo(octokit, branches, filterCommits, scan
     }
     const commits = await utils.getAllCommits(octokit, params)
     for (const commit of commits) {
-      const commitMsg = commit.commit.message.trim()
+      // trim spaces, leading bullet chars (- and =)
+      const commitMsg = commit.commit.message.replace(/^[\s=-]*/, '').trim()
       if (commitMessagesMap[commitMsg]) {
         // prevent duplicated messages
         continue
@@ -172,7 +176,8 @@ async function loadCommitMessagesFromRepo(octokit, branches, filterCommits, scan
       commitMessagesMap[commitMsg] = true
     }
   }
-  return commitMessages
+  // remove empty lines
+  return commitMessages.filter(line => line !== '')
 }
 
 async function computeReleaseNotes(octokit, tagPrefix, scanPath) {
