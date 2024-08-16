@@ -1,10 +1,12 @@
-name: "units-test"
+name: "test"
 
 on:
-  pull_request:
-    branches: [ '*' ]
   push:
     branches: [ '*' ]
+  pull_request:
+    types: [ opened, edited, reopened, synchronize, review_requested ]
+    branches: [ '*' ]
+  workflow_call:
 
 jobs:
   # lint
@@ -46,8 +48,9 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   # test the action itself
-  test:
+  test_non_auto:
     runs-on: ubuntu-latest
+    needs: [lint, units]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -81,6 +84,22 @@ jobs:
             cat package.json
             cp -f package.json.bak package.json
           fi
+
+  # test the action itself
+  test_auto:
+    runs-on: ubuntu-latest
+    needs: [lint, units]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Rebuild the dist/ directory
+        run: npm run prepare
       - name: Run Action (auto-mode)
         id: run-action-auto-mode
         uses: ./
@@ -88,7 +107,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
           auto-mode: true
-          branches: main, dev, not-exists
+          branches: main, release, dev, not-exists
           tag-prefix: va
       - name: Check output (auto-mode)
         run: |
@@ -114,6 +133,22 @@ jobs:
             cp -f RELEASE-NOTES.md.bak RELEASE-NOTES.md
             cp -f package.json.bak package.json
           fi
+
+  # test the action itself
+  test_dry_run:
+    runs-on: ubuntu-latest
+    needs: [lint, units]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Rebuild the dist/ directory
+        run: npm run prepare
       - name: Run Action (dry-run)
         id: run-action-dry-run
         uses: ./
@@ -121,7 +156,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
           auto-mode: true
-          branches: main, dev, not-exists
+          branches: main, release, dev, not-exists
           tag-prefix: v
       - name: Check output (dry-run)
         run: |
