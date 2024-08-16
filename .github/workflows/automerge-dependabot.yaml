@@ -3,7 +3,7 @@
 name: "automerge-dependabot"
 on:
   workflow_run:
-    workflows: [ "units-test" ]
+    workflows: [ "test" ]
     types: [ "completed" ]
 
 permissions:
