@@ -48,5 +48,5 @@ outputs:
   result:
     description: 'Action result, either FAILED, SKIPPED, or SUCCESS'
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'dist/index.js'
