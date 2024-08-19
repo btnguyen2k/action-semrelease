@@ -99,13 +99,13 @@ jobs:
           VERSION='${{ needs.dryrun.outputs.VERSION }}'
           RELEASE_NOTES='${{ needs.dryrun.outputs.RELEASE_NOTES }}'
 
-          echo "🕘 Updating file ${env.FILE_CHANGELOG}..."
-          head -1 ${env.FILE_CHANGELOG} > .temp.md
-          echo -e "\n## ${DATE} - ${env.TAG_PREFIX}${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
-          tail -n +2 ${env.FILE_CHANGELOG} >> .temp.md
-          mv -f .temp.md ${env.FILE_CHANGELOG}
-          echo "---------- content of ${env.FILE_CHANGELOG} ----------"
-          cat ${env.FILE_CHANGELOG}
+          echo "🕘 Updating file ${{ env.FILE_CHANGELOG }}..."
+          head -1 ${{ env.FILE_CHANGELOG }} > .temp.md
+          echo -e "\n## ${DATE} - ${{ env.TAG_PREFIX }}${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
+          tail -n +2 ${{ env.FILE_CHANGELOG }} >> .temp.md
+          mv -f .temp.md ${{ env.FILE_CHANGELOG }}
+          echo "---------- content of ${{ env.FILE_CHANGELOG }} ----------"
+          cat ${{ env.FILE_CHANGELOG }}
 
           echo "🕘 Updating VERSION string in file package.json..."
           sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
@@ -113,9 +113,9 @@ jobs:
           cat package.json
 
           echo "🕘 Updating VERSION string in other files..."
-          sed -i -E "s/<<VERSION>>/${env.TAG_PREFIX}${VERSION}/" ./*.md
-          sed -i -E "s/<<VERSION>>/${env.TAG_PREFIX}${VERSION}/" ./src/*.js
-          sed -i -E "s/<<VERSION>>/${env.TAG_PREFIX}${VERSION}/" ./test/*.js
+          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./*.md
+          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./src/*.js
+          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./test/*.js
 
           echo "🕘 Committing metadata updates..."
           git config --global user.email "<>"
