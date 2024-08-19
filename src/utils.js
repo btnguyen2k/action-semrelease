@@ -1,4 +1,8 @@
 module.exports = {
+  getOptions,
+  loadCommitMessagesFromFile,
+  loadCommitMessagesFromRepo,
+
   deleteRefSilently,
   getAllBranches,
   getCommit,
@@ -10,13 +14,116 @@ module.exports = {
   getTag,
 
   parseSemver,
-  parseReleaseNotes,
+  parseReleaseMeta,
   incMajorSemver,
   incMinorSemver,
   incPatchSemver,
 }
 
 const github = require('@actions/github')
+const core = require('@actions/core')
+const fs = require('fs')
+
+/**
+ * Loads commit messages from the specified file.
+ * @param commitLogsFile
+ * @returns {Promise<string[]|null>}
+ */
+async function loadCommitMessagesFromFile(commitLogsFile) {
+  if (fs.existsSync(commitLogsFile)) {
+    let commitLogs = fs.readFileSync(commitLogsFile, 'utf8').split('\n')
+    // trim spaces, leading bullet chars (- and =) && remove empty and comment lines
+    commitLogs = commitLogs
+      .map(line => line.replace(/^[\s=-]*/, '').trim())
+      .filter(line => line !== '' && !line.startsWith('#'))
+    return commitLogs
+  }
+  return null
+}
+
+/**
+ * Loads commit messages from the GitHub repository.
+ * @param octokit
+ * @param filterCommits
+ * @param branches
+ * @param scanPath
+ * @returns {Promise<string[]>}
+ */
+async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath) {
+  const commitMessages = []
+  for (const branch of branches) {
+    const params = {...filterCommits, sha: branch}
+    if (scanPath) {
+      params.path = scanPath
+    }
+    const commits = await getAllCommits(octokit, params)
+    for (const commit of commits) {
+      // trim spaces, leading bullet chars (- and =)
+      const commitMsg = commit.commit.message.replace(/^[\s=-]*/, '').trim()
+      commitMessages.push(commitMsg)
+    }
+  }
+
+  // remove empty and duplicated lines
+  return commitMessages
+    .filter(line => line !== '')
+    .filter((line, index, self) => self.indexOf(line) === index)
+}
+
+/**
+ * Convenience function to construct Option struct from inputs and environment variables.
+ * @returns {{isTagMajorRelease: boolean, tagPrefix: string, changelogFile: string, isTagOnly: boolean, scanPath: string, isAutoMode: boolean, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
+ */
+function getOptions() {
+  const inputDryRun = 'dry-run'
+  const defaultDryRun = 'false'
+  const inputAutoMode = 'auto-mode'
+  const defaultAutoMode = 'false'
+  const inputTagMajorRelease = 'tag-major-release'
+  const defaultTagMajorRelease = 'true'
+  const inputTagMinorRelease = 'tag-minor-release'
+  const defaultTagMinorRelease = 'false'
+  const inputTagPrefix = 'tag-prefix'
+  const defaultTagPrefix = 'v'
+  const inputBranches = 'branches'
+  const defaultBranches = 'main,master'
+  const inputTagOnly = 'tag-only'
+  const defaultTagOnly = 'false'
+  const inputPath = 'path'
+  const defaultPath = ''
+  const inputChangelogFile = 'changelog-file'
+  const defaultChangelogFile = ''
+
+  return {
+    isDryRun: optDryRun(),
+    isAutoMode: String(core.getInput(inputAutoMode) || process.env['AUTO_MODE'] || defaultAutoMode).toLowerCase() === 'true',
+    isTagMajorRelease: String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true',
+    isTagMinorRelease: String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true',
+    tagPrefix: String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix),
+    branches: optBranches(),
+    isTagOnly: String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true',
+    scanPath: String(core.getInput(inputPath) || process.env['SCAN_PATH'] || defaultPath),
+    changelogFile: String(core.getInput(inputChangelogFile) || process.env['CHANGELOG_FILE'] || defaultChangelogFile),
+  }
+
+  // dry-run mode is enabled if any of the following is true:
+  // - input.dry-run is set to true
+  // - env.DRY_RUN is set to true
+  // - file .semrelease-dry-run is present in the root of the repo
+  function optDryRun() {
+    const inputOrEnvDryRun = String(core.getInput(inputDryRun) || process.env['DRY_RUN'] || defaultDryRun).toLowerCase() === 'true'
+    const fileDryRun = fs.existsSync('.semrelease-dry-run')
+    return inputOrEnvDryRun || fileDryRun
+  }
+
+  function optBranches() {
+    const branchesStr = String(core.getInput(inputBranches) || process.env['BRANCHES'] || defaultBranches)
+    const branches = branchesStr.trim().split(/[,;\s]+/)
+    return branches.filter(branch => branch.trim() !== '')
+  }
+}
+
+/*----------------------------------------------------------------------*/
 
 async function deleteRefSilently(octokit, ref) {
   try {
@@ -180,7 +287,6 @@ async function getTag(octokit, sha) {
 
 /*----------------------------------------------------------------------*/
 
-const fs = require('fs')
 const reSemverInHeading = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)/
 const reSemver = /^v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
 const reSemverRaw = /^((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
@@ -199,6 +305,11 @@ function parseSemver(text) {
   return null
 }
 
+/**
+ * Parses release notes from specified file.
+ * @param file
+ * @returns {{release_notes: string, release_version: string}|null}
+ */
 function parse(file) {
   const releaseNotes = []
   let enterReleaseNotes = false
@@ -239,11 +350,24 @@ const changelogFilenames = [
   "change_log.md", "change_log",
 ]
 
-function parseReleaseNotes(changelogFile) {
+/**
+ * Parses release metadata from specified change log file.
+ *
+ * If the specified file does not exist, the function will try to scan common release notes files.
+ *
+ * @param changelogFile
+ * @returns {{release_notes: string, release_version: string}|null}
+ */
+function parseReleaseMeta(changelogFile) {
+  core.warning(`⚠️ DEPRECATION WARNING`)
+  core.warning(`⚠️ Parsing changelog file for release info is deprecated and will be removed in future versions.`)
+  core.warning(`⚠️ Please use .senrelease/this_release file instead. See https://github.com/btnguyen2k/action-semrelease for more details.`)
   if (changelogFile && fs.existsSync(changelogFile)) {
+    // changelog file is specified and exists
     return parse(changelogFile)
   }
 
+  // scan common release notes files
   for (const file of releaseNotesFilenames) {
     if (fs.existsSync(file)) {
       const result = parse(file)
@@ -256,6 +380,7 @@ function parseReleaseNotes(changelogFile) {
     }
   }
 
+  // scan common changelog files
   for (const file of changelogFilenames) {
     if (fs.existsSync(file)) {
       return parse(file)

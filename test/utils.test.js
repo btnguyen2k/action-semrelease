@@ -2,12 +2,12 @@ const utils = require('../src/utils')
 const github = require('@actions/github')
 
 test('parse release-notes', () => {
-  const releaseNotes = utils.parseReleaseNotes()
+  const releaseNotes = utils.parseReleaseMeta()
   expect(releaseNotes).toBeDefined()
 })
 
 test('parse release-notes - specific changelog file', () => {
-  const releaseNotes = utils.parseReleaseNotes('testdata/CHANGELOG.md')
+  const releaseNotes = utils.parseReleaseMeta('testdata/CHANGELOG.md')
   expect(releaseNotes).toBeDefined()
 })
 
@@ -15,7 +15,7 @@ test('parse release-notes from change-log file', () => {
   const save = process.cwd()
   try {
     process.chdir('testdata/')
-    const releaseNotes = utils.parseReleaseNotes()
+    const releaseNotes = utils.parseReleaseMeta()
     expect(releaseNotes).toBeDefined()
   } finally {
     process.chdir(save)
@@ -38,6 +38,28 @@ test('incMajorSemver', () => {
     prerelease: '',
   }
   expect(utils.incMajorSemver(version)).toEqual(expected)
+})
+
+test('getOptions - default values', () => {
+  const defaultDryRun = false
+  const defaultAutoMode = false
+  const defaultTagMajorRelease = true
+  const defaultTagMinorRelease = false
+  const defaultTagPrefix = 'v'
+  const defaultBranches = ['main', 'master']
+  const defaultTagOnly = false
+  const defaultPath = ''
+  const defaultChangelogFile = ''
+  const options = utils.getOptions()
+  expect(options.isDryRun).toBe(defaultDryRun)
+  expect(options.isAutoMode).toBe(defaultAutoMode)
+  expect(options.isTagMajorRelease).toBe(defaultTagMajorRelease)
+  expect(options.isTagMinorRelease).toBe(defaultTagMinorRelease)
+  expect(options.tagPrefix).toBe(defaultTagPrefix)
+  expect(options.branches).toEqual(defaultBranches)
+  expect(options.isTagOnly).toBe(defaultTagOnly)
+  expect(options.scanPath).toBe(defaultPath)
+  expect(options.changelogFile).toBe(defaultChangelogFile)
 })
 
 test('incMinorSemver', () => {
@@ -91,6 +113,21 @@ test('parseSemver', () => {
 test('parseSemver - null', () => {
   const version = '1.2.3.invalid'
   expect(utils.parseSemver(version)).toBeNull()
+})
+
+test('loadCommitMessagesFromFile - not-exists', async() => {
+  const commitMessages = await utils.loadCommitMessagesFromFile('not-exists')
+  expect(commitMessages).toBeNull()
+})
+
+test('loadCommitMessagesFromFile - empty', async() => {
+  const commitMessages = await utils.loadCommitMessagesFromFile('testdata/this_release_empty')
+  expect(commitMessages).toEqual([])
+})
+
+test('loadCommitMessagesFromFile - sample', async() => {
+  const commitMessages = await utils.loadCommitMessagesFromFile('testdata/this_release_sample')
+  expect(commitMessages.length).toEqual(2)
 })
 
 function getOctokitInstance() {
@@ -210,6 +247,10 @@ describe('with octokit', () => {
     const commits = await utils.getAllCommits(octokit, {owner: 'btnguyen2k', repo: 'long-repo', sha: 'main'})
     expect(commits.length).toBeGreaterThan(0)
   })
+  test('test getAllCommits - not-found', async() => {
+    const commits = await utils.getAllCommits(octokit, {owner: 'btnguyen2k', repo: 'not-found', sha: 'main'})
+    expect(commits.length).toBe(0)
+  })
 
   test('test getCommit', async() => {
     const tagInfo = await utils.findLatestTag(octokit, 'v')
@@ -236,19 +277,29 @@ describe('with octokit', () => {
     const release = await utils.findLatestRelease(octokit, 'v')
     expect(release).not.toBeNull()
   })
-  // test('test findLatestRelease - long', async() => {
-  //   const saved = process.env['GITHUB_REPOSITORY']
-  //   try {
-  //     process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/long-repo'
-  //     const release = await utils.findLatestRelease(octokit, 'v')
-  //     expect(release).not.toBeNull()
-  //   } finally {
-  //     process.env['GITHUB_REPOSITORY'] = saved
-  //   }
-  // })
+  test('test findLatestRelease - long', async() => {
+    const saved = process.env['GITHUB_REPOSITORY']
+    try {
+      process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/long-repo'
+      const release = await utils.findLatestRelease(octokit, 'x')
+      expect(release).not.toBeNull()
+    } finally {
+      process.env['GITHUB_REPOSITORY'] = saved
+    }
+  })
   test('test findLatestRelease - not-found', async() => {
-    const release = await utils.findLatestRelease(octokit, 'nf')
+    const release = await utils.findLatestRelease(octokit, 'not-found')
     expect(release).toBeNull()
+  })
+  test('test findLatestRelease - no-repo', async() => {
+    const saved = process.env['GITHUB_REPOSITORY']
+    try {
+      process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/no-repo'
+      const release = await utils.findLatestRelease(octokit, 'x')
+      expect(release).toBeNull()
+    } finally {
+      process.env['GITHUB_REPOSITORY'] = saved
+    }
   })
 
   test('test getRefByTagName - not-exists', async() => {
@@ -273,9 +324,29 @@ describe('with octokit', () => {
     const tag = await utils.findLatestTag(octokit, 'v')
     expect(tag).not.toBeNull()
   })
+  test('test findLatestTag - long', async() => {
+    const saved = process.env['GITHUB_REPOSITORY']
+    try {
+      process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/long-repo'
+      const release = await utils.findLatestTag(octokit, 'v')
+      expect(release).not.toBeNull()
+    } finally {
+      process.env['GITHUB_REPOSITORY'] = saved
+    }
+  })
   test('test findLatestTag - not-found', async() => {
     const tag = await utils.findLatestTag(octokit, 'nf')
     expect(tag).toBeNull()
+  })
+  test('test findLatestTag - no-repo', async() => {
+    const saved = process.env['GITHUB_REPOSITORY']
+    try {
+      process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/no-repo'
+      const release = await utils.findLatestTag(octokit, 'v')
+      expect(release).toBeNull()
+    } finally {
+      process.env['GITHUB_REPOSITORY'] = saved
+    }
   })
 
   test('test getTag - not-exists', async() => {
@@ -285,5 +356,18 @@ describe('with octokit', () => {
   test('test getTag - exists', async() => {
     const release = await utils.getTag(octokit, '2c547afacd7a353c94d4e099fb80cd415691723a')
     expect(release).not.toBeNull()
+  })
+
+  test('test loadCommitMessagesFromRepo - empty', async() => {
+    const commitMessages = await utils.loadCommitMessagesFromRepo(octokit, null, ['not-exists'], '')
+    expect(commitMessages.length).toEqual(0)
+  })
+  test('test loadCommitMessagesFromRepo - scanPath - empty', async() => {
+    const commitMessages = await utils.loadCommitMessagesFromRepo(octokit, null, ['main'], '/not-exists')
+    expect(commitMessages.length).toEqual(0)
+  })
+  test('test loadCommitMessagesFromRepo', async() => {
+    const commitMessages = await utils.loadCommitMessagesFromRepo(octokit, null, ['main'], '')
+    expect(commitMessages.length).toBeGreaterThan(0)
   })
 })
