@@ -2,4 +2,4 @@
 #   git log origin..HEAD | grep "^\s" > .semrelease/this_release
 - Migrated to Node v20
 - Improved commit message parsing rules.
-- Deprecation: Parsing changelog file for release info is deprecated and will be removed in future versions.
+- Deprecated parsing changelog file for release info.
