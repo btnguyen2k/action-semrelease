@@ -1,3 +1,6 @@
-# This file has been cleaned up post-releasing version 3.4.0.
+## [Test data]
 # Generate its content quickly using the following command:
 #   git log origin..HEAD | grep "^\s" > .semrelease/this_release
+
+## invokes loadCommitMessagesFromFile() against this file should return empty result
+

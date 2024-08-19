@@ -1,23 +1,129 @@
-# Release new version
-name: "release"
+# Automatically release a new version when a PR is merged to branch `release`
+name: 'release'
 
 on:
-  workflow_run:
-    workflows: [ "prerelease" ]
-    types: [ "completed" ]
+  pull_request:
+    types: [ closed ]
+    branches: [ release ]
+
+env:
+  BRANCH_TO_RELEASE: 'release'
+  TAG_PREFIX: 'v'
+  FILE_CHANGELOG: 'RELEASE-NOTES.md'
 
 jobs:
-  release:
+  callTest:
+    uses: ./.github/workflows/test.yaml
+
+  dryrun:
     runs-on: ubuntu-latest
+    needs: [ callTest ]
     if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
-      pull-requests: write
+      github.event.pull_request.merged == true
+    outputs:
+      RESULT: ${{ steps.release_dry_run.outputs.result }}
+      VERSION: ${{ steps.release_dry_run.outputs.releaseVersion }}
+      RELEASE_NOTES: ${{ steps.release_dry_run.outputs.releaseNotes }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Rebuild the dist/ directory
+        run: npm run prepare
+      - name: Release (dry-run)
+        id: release_dry_run
+        uses: ./ # The repo itself is the action, and is always the latest
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: true
+          auto-mode: true
+          tag-major-release: true
+          tag-minor-release: true
+          branches: ${{ env.BRANCH_TO_RELEASE }}
+
+  release:
+    runs-on: ubuntu-latest
+    if: |
+      needs.dryrun.outputs.RESULT == 'SUCCESS'
+    needs: [ dryrun ]
+    outputs:
+      RESULT: ${{ steps.semrelease.outputs.result }}
+      VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
+      RELEASE_NOTES: ${{ steps.semrelease.outputs.releaseNotes }}
+    permissions:
+      contents: write # to be able to publish a GitHub release and commit back to repo
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Install Dependencies
+        run: npm ci
+      - name: ensure dist/
+        # `dist/index.js` is a special file in Actions.
+        # When you reference an action with `uses:` in a workflow,
+        # `index.js` is the code that will run.
+        # For our project, we generate this file through a build process from other source files.
+        # We need to make sure the checked-in `index.js` actually matches what we expect it to be.
+        run: |
+          echo "🕘 Rebuilding the dist/ directory..."
+          rm dist/*
+          npm run prepare
+
+          echo "🕘 Syncing dist/ directories..."
+          git diff --ignore-space-at-eol dist/
+          if [ "$(git diff --ignore-space-at-eol dist/ | wc -l)" -gt "0" ]; then
+            echo "ℹ️ Detected uncommitted changes after build. See status below:"
+            git diff
+            echo "🕜 Committing changes to dist/..."
+            git config --global user.email "<>"
+            git config --global user.name "CI Build"
+            git commit -am "build [skip ci]"
+            echo "🕜 Pushing changes to dist/..."
+            git push -f
+            echo "✅ Done."
+          else
+            echo "❎ No changes detected after build."
+          fi
+      - name: Update metadata
+        run: |
+          echo "🕘 Updating metadata..."
+          DATE=`date +%Y-%m-%d`
+          VERSION='${{ needs.dryrun.outputs.VERSION }}'
+          RELEASE_NOTES='${{ needs.dryrun.outputs.RELEASE_NOTES }}'
+
+          echo "🕘 Updating file ${{ env.FILE_CHANGELOG }}..."
+          head -1 ${{ env.FILE_CHANGELOG }} > .temp.md
+          echo -e "\n## ${DATE} - ${{ env.TAG_PREFIX }}${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
+          tail -n +2 ${{ env.FILE_CHANGELOG }} >> .temp.md
+          mv -f .temp.md ${{ env.FILE_CHANGELOG }}
+          echo "---------- content of ${{ env.FILE_CHANGELOG }} ----------"
+          cat ${{ env.FILE_CHANGELOG }}
+
+          echo "🕘 Updating VERSION string in file package.json..."
+          sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
+          echo "---------- content of package.json ----------"
+          cat package.json
+
+          echo "🕘 Updating VERSION string in other files..."
+          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./*.md
+          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./src/*.js
+          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./test/*.js
+
+          echo "🕘 Committing metadata updates..."
+          git config --global user.email "<>"
+          git config --global user.name "CI Build"
+          git commit -am "Update metadata for new version ${VERSION}"
+          git push -f
+
+          echo "✅ Done."
       - name: SemRelease
         id: semrelease
         uses: ./ # The repo itself is the action, and is always the latest
@@ -26,14 +132,16 @@ jobs:
           tag-major-release: true
           tag-minor-release: true
           auto-mode: true
-          branches: main,dev
+          branches: ${{ env.BRANCH_TO_RELEASE }}
       - name: Cleanup file .semrelease/this_release
         run: |
           RESULT='${{ steps.semrelease.outputs.result }}'
           if [ "${RESULT}" == "SUCCESS" ]; then
             VERSION='${{ steps.semrelease.outputs.releaseVersion }}'
             echo "🕘 Cleaning up file .semrelease/this_release..."
-            echo > .semrelease/this_release
+            echo "# This file has been cleaned up post-releasing version ${VERSION}." > .semrelease/this_release
+            echo "# Generate its content quickly using the following command:" >> .semrelease/this_release
+            echo "#   git log origin..HEAD | grep \"^\s\" > .semrelease/this_release" >> .semrelease/this_release
             git config --global user.email "<>"
             git config --global user.name "CI Build"
             git commit -am "Cleanup file .semrelease/this_release post releasing version ${VERSION}"
@@ -42,3 +150,28 @@ jobs:
           else
             echo "❎ SKIPPED."
           fi
+
+  mergeToMain:
+    runs-on: ubuntu-latest
+    if: |
+      needs.release.outputs.RESULT == 'SUCCESS'
+    needs: [ release ]
+    permissions:
+      pull-requests: write # to be able to create PRs or comment on released PRs
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          VERSION: ${{ needs.release.outputs.VERSION }}
+          RELEASE_NOTES: ${{ needs.release.outputs.RELEASE_NOTES }}
+        with:
+          script: |
+            const {data: pr} = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Merge to main after releasing new version ${process['env']['VERSION']}`,
+              body: process['env']['RELEASE_NOTES'],
+              head: process['env']['BRANCH_TO_RELEASE'],
+              base: 'main',
+              maintainer_can_modify: true,
+            });
+            console.log('✅ Created PR: ', pr);

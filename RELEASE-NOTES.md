@@ -1,5 +1,15 @@
 # SemRelease release notes
 
+## 2024-08-19 - v3.4.0
+
+### Added/Refactoring
+
+Deprecated parsing changelog file for release info.
+
+### Fixed/Improvement
+
+Improved commit message parsing rules.
+
 ## 2024-01-21 - v3.3.0
 
 ### Added/Refactoring

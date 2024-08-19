@@ -8,9 +8,11 @@ name: "ensure dist/"
 on:
   pull_request:
     types: [closed]
-    branches: [ 'main' ]
+    # branches: [ 'main' ]
+    branches: [ 'release' ]
   push:
-    branches: [ 'main' ]
+    # branches: [ 'main' ]
+    branches: [ 'release' ]
 
 jobs:
   ensure-dist:
