@@ -22,7 +22,7 @@ This action extract release information either from a release notes or changelog
 
 ### auto-mode: false (disable auto-mode)
 
-> ⚠️ **Deprecation notice**: beginning with version [<<VERSION>>](RELEASE-NOTES.md) this version is deprecated
+> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md) this version is deprecated
 > and will be removed in future releases.
 
 The release notes or changelog file is expected to be in Markdown, with each release information in a section with the following format:
@@ -49,7 +49,7 @@ The release notes or changelog file is expected to be in Markdown, with each rel
 
 ### auto-mode: true (enable auto-mode)
 
-> ⚠️ **Deprecation notice**: beginning with version [<<VERSION>>](RELEASE-NOTES.md) `auto-mode` input is deprecated
+> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md) `auto-mode` input is deprecated
 > and will be removed in future releases.
 
 When `auto-mode` is enabled, this action scans commit messages to determine to release a new version. Release notes are automatically compiled from commit messages.
@@ -150,7 +150,7 @@ Inputs are supplied via the `with` block. The following inputs are accepted:
 
 [2] `changelog-file` is available since [v3.3.0](RELEASE-NOTES.md).
 
-> ⚠️ **Deprecation notice**: beginning with version [<<VERSION>>](RELEASE-NOTES.md) the following inputs are deprecated
+> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md) the following inputs are deprecated
 > and will be removed in future releases: `auto-mode`, `changes-file`.
 
 
