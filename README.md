@@ -22,6 +22,9 @@ This action extract release information either from a release notes or changelog
 
 ### auto-mode: false (disable auto-mode)
 
+> ⚠️ **Deprecation notice**: beginning with version [<<VERSION>>](RELEASE-NOTES.md) this version is deprecated
+> and will be removed in future releases.
+
 The release notes or changelog file is expected to be in Markdown, with each release information in a section with the following format:
 
 ```markdown
@@ -46,7 +49,55 @@ The release notes or changelog file is expected to be in Markdown, with each rel
 
 ### auto-mode: true (enable auto-mode)
 
-This action scans commit messages to determine to release a new version. Release notes are automatically compiled from commit messages.
+> ⚠️ **Deprecation notice**: beginning with version [<<VERSION>>](RELEASE-NOTES.md) `auto-mode` input is deprecated
+> and will be removed in future releases.
+
+When `auto-mode` is enabled, this action scans commit messages to determine to release a new version. Release notes are automatically compiled from commit messages.
+
+Sample usage:
+
+```yaml
+uses: btnguyen2k/action-semrelease@v3
+with:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+  auto-mode: true
+```
+
+A new major version is released when a breaking change is detected in commit messages;
+a new minor version is released when new or deprecated features are detected;
+and a new patch version is released when only bug fixes or improvements/optimizations are detected.
+
+The following regular expressions are used to detect breaking changes, new features, and bug fixes:
+
+```regexp
+A breaking change is detected if any of the following rules matches:
+
+/^[^a-z]*(break(ing)?\s+)?change([ds])?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*break(ing)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*rem(ove([ds])?)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*ren(ame([ds])?)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*repl(ace([ds])?)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*redesign(ed|s)?(\([^)]+\)\s*)?:?\s+/i
+
+A new/deprecated feature is detected if any of the following rules matches:
+
+/^[^a-z]*depr(ecate([ds])?)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*refactor(ed|s)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*add(ed|s)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*(new\s+)?feat(ure)?(\([^)]+\)\s*)?:?\s+/i
+
+A bug fix/improvement/optimization is detected if any of the following rules matches:
+
+/^[^a-z]*fix(ed|es)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*patch(ed|es)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*improve(s|d|ment)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*perf(ormance)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*optimiz(e|ation|es|ed)(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
+```
+
+The following table illustrates how commit messages are mapped to release versions:
 
 | Sample commit message                                                  | Release version   |
 |------------------------------------------------------------------------|-------------------|
@@ -66,10 +117,9 @@ This action scans commit messages to determine to release a new version. Release
 | Dependency: bump `krypto` to v1.2.3                                    | New patch release |
 | Security: fix potential SQLi security vulnerability in class `DbUtils` | New patch release |
 
-Since [v3.3.0](RELEASE-NOTES.md), if the file `.semrelease/this_release` exists, commit messages are pulled from this file, with one commit message per line.
-Otherwise, commit messages are pulled from the GitHub repository.
-
-> The rules exemplified in the table above are applied to commit messages found in both the file `.semrelease/this_release` and the commit messages in the GitHub repository.
+Starting from [v3.3.0](RELEASE-NOTES.md), if the `.semrelease/this_release` file is present, commit messages are
+sourced from this file, with one commit message per line. If the file does not exist or contains no
+commit messages, they are instead pulled from the GitHub repository.
 
 - This action leaves the file `.semrelease/this_release` intact after execution. Remember to update the file content if necessary.
 - The content of the file `.semrelease/this_release` can be quickly generated using the following command:
@@ -86,9 +136,9 @@ Inputs are supplied via the `with` block. The following inputs are accepted:
 |-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
 | github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
 | dry-run                       | No       | `false`         | If `true`, the action will run in dry-run mode.                               |
+| tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
 | tag-major-release             | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                     |
 | tag-minor-release             | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                   |
-| tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
 | auto-mode <sup>[1]</sup>      | No       | `false`         | If `true`, _auto-mode_ is enabled.                                            |
 |                               |          |                 |                                                                               |
 | branches                      | No       | `'main,master'` | Comma-separated list of branches to scan commit messages (_auto-mode_ only!). |
@@ -100,12 +150,16 @@ Inputs are supplied via the `with` block. The following inputs are accepted:
 
 [2] `changelog-file` is available since [v3.3.0](RELEASE-NOTES.md).
 
+> ⚠️ **Deprecation notice**: beginning with version [<<VERSION>>](RELEASE-NOTES.md) the following inputs are deprecated
+> and will be removed in future releases: `auto-mode`, `changes-file`.
+
+
 ## Outputs
 
 | Output         | Description                                                                |
 |----------------|----------------------------------------------------------------------------|
 | result         | The result of the action. Possible values: `FAILED`, `SKIPPED`, `SUCCESS`. |
-| releaseVersion | The released version string.                                               |
+| releaseVersion | The released version string, e.g. `1.2.3` (`tag-prefix` is not included!)  |
 | releaseNotes   | The release notes.                                                         |
 
 ## License

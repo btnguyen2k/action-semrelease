@@ -1,12 +1,10 @@
 name: "test"
 
 on:
+  pull_request:
+    branches: [ '*' ]
   push:
     branches: [ '*' ]
-  pull_request:
-    types: [ opened, edited, reopened, synchronize, review_requested ]
-    branches: [ '*' ]
-  workflow_call:
 
 jobs:
   # lint
@@ -39,6 +37,8 @@ jobs:
       - name: Run Tests
         run: |
           export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          export DRY_RUN=true
+          export TAG_PREFIX=vu
           npm run test
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4
@@ -180,3 +180,4 @@ jobs:
             cp -f RELEASE-NOTES.md.bak RELEASE-NOTES.md
             cp -f package.json.bak package.json
           fi
+

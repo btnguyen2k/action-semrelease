@@ -1,0 +1,50 @@
+# Release new version
+name: "release"
+
+on:
+  workflow_run:
+    workflows: [ "prerelease" ]
+    types: [ "completed" ]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+#    if: |
+#      github.event.workflow_run.conclusion == 'success' &&
+#      github.ref == 'refs/heads/main'
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.ref == 'refs/heads/release'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: SemRelease
+        id: semrelease
+        uses: ./ # The repo itself is the action, and is always the latest
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          tag-major-release: true
+          tag-minor-release: true
+          auto-mode: true
+          #branches: main,dev
+          branches: release,dev
+      - name: Cleanup file .semrelease/this_release
+        run: |
+          RESULT='${{ steps.semrelease.outputs.result }}'
+          if [ "${RESULT}" == "SUCCESS" ]; then
+            VERSION='${{ steps.semrelease.outputs.releaseVersion }}'
+            echo "🕘 Cleaning up file .semrelease/this_release..."
+            echo "# This file has been cleaned up post-releasing version ${VERSION}." > .semrelease/this_release
+            echo "# Generate its content quickly using the following command:" >> .semrelease/this_release
+            echo "#   git log origin..HEAD | grep \"^\s\" > .semrelease/this_release" >> .semrelease/this_release
+            git config --global user.email "<>"
+            git config --global user.name "CI Build"
+            git commit -am "Cleanup file .semrelease/this_release post releasing version ${VERSION}"
+            git push -f
+            echo "✅ Done."
+          else
+            echo "❎ SKIPPED."
+          fi

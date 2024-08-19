@@ -2,5 +2,6 @@ dist/**   -diff linguist-generated=true
 dist/**   text eol=lf
 *.txt     text eol=lf
 *.js      text eol=lf
+*.mjs     text eol=lf
 *.js.map  text eol=lf
 *.md      text eol=lf

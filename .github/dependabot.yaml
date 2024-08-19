@@ -10,5 +10,5 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: "daily"
-#    versioning-strategy: "increase-if-necessary"
+      interval: "weekly"
+      day: "sunday"

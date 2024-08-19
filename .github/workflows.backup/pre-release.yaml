@@ -9,9 +9,12 @@ on:
 jobs:
   pre-release:
     runs-on: ubuntu-latest
+#    if: |
+#      github.event.workflow_run.conclusion == 'success' &&
+#      github.ref == 'refs/heads/main'
     if: |
       github.event.workflow_run.conclusion == 'success' &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/release'
     permissions:
       contents: write
       pull-requests: write
@@ -26,7 +29,8 @@ jobs:
           tag-major-release: true
           tag-minor-release: true
           auto-mode: true
-          branches: main,dev
+          #branches: main,dev
+          branches: release,dev
           dry-run: true
       - name: Update RELEASE-NOTES.md and VERSION string in files
         run: |

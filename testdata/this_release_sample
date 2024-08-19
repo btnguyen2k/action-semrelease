@@ -1,5 +1,8 @@
+## [Test data]
 # Generate its content quickly using the following command:
 #   git log origin..HEAD | grep "^\s" > .semrelease/this_release
+
 - Migrated to Node v20
+
+# this line is a comment and will be ignored
 - Improved commit message parsing rules.
-- Deprecated parsing changelog file for release info.
