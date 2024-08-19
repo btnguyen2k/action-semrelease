@@ -25,6 +25,16 @@ jobs:
       VERSION: ${{ steps.release_dry_run.outputs.releaseVersion }}
       RELEASE_NOTES: ${{ steps.release_dry_run.outputs.releaseNotes }}
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Rebuild the dist/ directory
+        run: npm run prepare
       - name: Release (dry-run)
         id: release_dry_run
         uses: ./ # The repo itself is the action, and is always the latest
@@ -50,6 +60,12 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Install Dependencies
+        run: npm ci
       - name: ensure dist/
         # `dist/index.js` is a special file in Actions.
         # When you reference an action with `uses:` in a workflow,
