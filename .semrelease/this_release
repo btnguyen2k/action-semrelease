@@ -1,5 +1,3 @@
+# This file has been cleaned up post-releasing version 3.4.0.
 # Generate its content quickly using the following command:
 #   git log origin..HEAD | grep "^\s" > .semrelease/this_release
-- Migrated to Node v20
-- Improved commit message parsing rules.
-- Deprecated parsing changelog file for release info.
