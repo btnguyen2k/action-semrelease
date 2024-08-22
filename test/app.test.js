@@ -93,7 +93,7 @@ test('test dry-run/auto-branch-test-auto-v0.0.1', async() => {
     const {result, releaseVersion, releaseNotes} = await app.semrelease()
     expect(result).toBe('SUCCESS')
     expect(releaseVersion).toBe('0.0.1')
-    expect(releaseNotes).toBe('### Fixed/Improvement\n\nFixed a bug that caused random crash after login')
+    expect(releaseNotes).toBe('### Fixed/Improvement\n\n- Fixed a bug that caused random crash after login')
   } finally {
     process.chdir(save)
   }
