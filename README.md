@@ -4,73 +4,65 @@
 [![Actions Status](https://github.com/btnguyen2k/action-semrelease/actions/workflows/test.yaml/badge.svg)](https://github.com/btnguyen2k/action-semrelease/actions)
 [![codecov](https://codecov.io/gh/btnguyen2k/action-semrelease/branch/main/graph/badge.svg)](https://codecov.io/gh/btnguyen2k/action-semrelease)
 
-GitHub Action to publish releases using tags, following semantic versioning.
+GitHub Action to automatically create releases with tags, following [semantic versioning](https://semver.org/spec/v2.0.0.html) conventions.
 
 ## Usage
 
+Use this Action as a step in your workflow file. For example:
+
 ```yaml
-uses: btnguyen2k/action-semrelease@v3
-with:
-  github-token: ${{ secrets.GITHUB_TOKEN }}
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      RESULT: ${{ steps.release.outputs.result }}
+      VERSION: ${{ steps.release.outputs.releaseVersion }}
+      RELEASE_NOTES: ${{ steps.release.outputs.releaseNotes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Release
+        id: release
+        uses: btnguyen2k/action-semrelease@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  post-release:
+    runs-on: ubuntu-latest
+    needs: [release]
+    steps:
+      - name: Print release result
+        run: |
+          RESULT='${{ needs.release.outputs.RESULT }}'
+          VERSION='${{ needs.release.outputs.VERSION }}'
+          RELEASE_NOTES='${{ needs.release.outputs.RELEASE_NOTES }}'
+          echo "- RESULT: ${RESULT}"
+          echo "- VERSION: ${VERSION}"
+          echo "- RELEASE_NOTES: ${RELEASE_NOTES}"
 ```
 
 ## How it works
 
-This action extract release information either from a release notes or changelog file located in the root of the repository; or from commit messages if `auto-mode` is enabled.
+This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. The following screenshot illustrates the result:
 
-> `auto-mode` is available since version [v2.0.0](RELEASE-NOTES.md).
+![Releases and Tags](docs/semrelease-releases-and-tags.png)
 
-### auto-mode: false (disable auto-mode)
+> The version number follows [semantic versioning](https://semver.org/spec/v2.0.0.html) conventions. The tag name can have an optional prefix, for example `v` (e.g. `v1.2.3`).
 
-> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md) this version is deprecated
-> and will be removed in future releases.
+### Versioning rules
 
-The release notes or changelog file is expected to be in Markdown, with each release information in a section with the following format:
-
-```markdown
-## 2023-08-07 - v1.0.0
-
-- Publish releases using tags, following semantic versioning.
-
-## 2023-08-06 - v0.9.1
-
-- Minor typo fixed.
-```
-
-👉 The section for the latest release must be at the top of the file. Version string and release notes are automatically extracted from the section title and content.
-
-👉 The version string must follow [Semantic Versioning spec](https://semver.org), and can be optionally prefixed by letter `v`.
-
-👉 This action scans the following files, in order, to extract release information: `RELEASE-NOTES.md`, `RELEASE_NOTES.MD`, `RELEASE-NOTES`,
-`RELEASE_NOTES.md`, `RELEASE_NOTES.MD`, `RELEASE_NOTES`, `release-notes.md`, `release-notes`, `release_notes.md`,
-`release_notes`, `CHANGELOG.md`, `CHANGELOG.MD`, `CHANGELOG`, `CHANGE-LOG.md`, `CHANGE-LOG.MD`, `CHANGE-LOG`,
-`CHANGE_LOG.md`, `CHANGE_LOG.MD`, `CHANGE_LOG`, `changelog.md`, `changelog`, `change-log.md`, `change-log`,
-`change_log.md`, `change_log`.
-
-### auto-mode: true (enable auto-mode)
-
-> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md) `auto-mode` input is deprecated
-> and will be removed in future releases.
-
-When `auto-mode` is enabled, this action scans commit messages to determine to release a new version. Release notes are automatically compiled from commit messages.
-
-Sample usage:
-
-```yaml
-uses: btnguyen2k/action-semrelease@v3
-with:
-  github-token: ${{ secrets.GITHUB_TOKEN }}
-  auto-mode: true
-```
-
-A new major version is released when a breaking change is detected in commit messages;
-a new minor version is released when new or deprecated features are detected;
-and a new patch version is released when only bug fixes or improvements/optimizations are detected.
+A new major version is released when a breaking change is detected in commit messages.
+A new minor version is released when new or deprecated features are detected.
+A new patch version is released when only bug fixes or improvements/optimizations are detected.
 
 The following regular expressions are used to detect breaking changes, new features, and bug fixes:
 
 ```regexp
-A breaking change is detected if any of the following rules matches:
+A breaking change is detected if any of the following rules match:
 
 /^[^a-z]*(break(ing)?\s+)?change([ds])?(\([^)]+\)\s*)?:?\s+/i
 /^[^a-z]*break(ing)?(\([^)]+\)\s*)?:?\s+/i
@@ -79,14 +71,14 @@ A breaking change is detected if any of the following rules matches:
 /^[^a-z]*repl(ace([ds])?)?(\([^)]+\)\s*)?:?\s+/i
 /^[^a-z]*redesign(ed|s)?(\([^)]+\)\s*)?:?\s+/i
 
-A new/deprecated feature is detected if any of the following rules matches:
+A new/deprecated feature is detected if any of the following rules match:
 
 /^[^a-z]*depr(ecate([ds])?)?(\([^)]+\)\s*)?:?\s+/i
 /^[^a-z]*refactor(ed|s)?(\([^)]+\)\s*)?:?\s+/i
 /^[^a-z]*add(ed|s)?(\([^)]+\)\s*)?:?\s+/i
 /^[^a-z]*(new\s+)?feat(ure)?(\([^)]+\)\s*)?:?\s+/i
 
-A bug fix/improvement/optimization is detected if any of the following rules matches:
+A bug fix/improvement/optimization is detected if any of the following rules match:
 
 /^[^a-z]*fix(ed|es)?(\([^)]+\)\s*)?:?\s+/i
 /^[^a-z]*patch(ed|es)?(\([^)]+\)\s*)?:?\s+/i
@@ -117,58 +109,65 @@ The following table illustrates how commit messages are mapped to release versio
 | Dependency: bump `krypto` to v1.2.3                                    | New patch release |
 | Security: fix potential SQLi security vulnerability in class `DbUtils` | New patch release |
 
-Starting from [v3.3.0](RELEASE-NOTES.md), if the `.semrelease/this_release` file is present, commit messages are
-sourced from this file, with one commit message per line. If the file does not exist or contains no
-commit messages, they are instead pulled from the GitHub repository.
+### Inputs and Outputs
 
-- This action leaves the file `.semrelease/this_release` intact after execution. Remember to update the file content if necessary.
-- The content of the file `.semrelease/this_release` can be quickly generated using the following command:
+Inputs are supplied via the `with` block. For example:
 
-```shell
-$ git log origin..HEAD | grep "^\s" > .semrelease/this_release
+```yaml
+uses: btnguyen2k/action-semrelease@v3
+with:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+  dry-run: true
 ```
 
-## Inputs
-
-Inputs are supplied via the `with` block. The following inputs are accepted:
+The following inputs are accepted:
 
 | Input                         | Required | Default         | Description                                                                   |
 |-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
 | github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
-| dry-run                       | No       | `false`         | If `true`, the action will run in dry-run mode.                               |
+| dry-run                       | No       | `false`         | If `true`, the Action will run in dry-run mode.                               |
 | tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
 | tag-major-release             | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                     |
 | tag-minor-release             | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                   |
-| auto-mode <sup>[1]</sup>      | No       | `false`         | If `true`, _auto-mode_ is enabled.                                            |
-|                               |          |                 |                                                                               |
-| branches                      | No       | `'main,master'` | Comma-separated list of branches to scan commit messages (_auto-mode_ only!). |
-| path                          | No       | `''`            | Scan only commits containing this file path (_auto-mode_ only).               |
-|                               |          |                 |                                                                               |
-| changelog-file <sup>[2]</sup> | No       | `''`            | Path to changelog file (_non auto-mode_ only).                                |
+| branches                      | No       | `'main,master'` | Comma-separated list of branches to scan for commit messages.                 |
+| path                          | No       | `''`            | Scan and Analyze only commits containing this file path.                      |
 
-[1] `auto-mode` is available since [v2.0.0](RELEASE-NOTES.md).
+> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md), the `auto-mode` and `changelog-file` inputs are deprecated
+> and will be removed in future releases.
 
-[2] `changelog-file` is available since [v3.3.0](RELEASE-NOTES.md).
+This Action outputs the following:
 
-> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md) the following inputs are deprecated
-> and will be removed in future releases: `auto-mode`, `changes-file`.
+| Output         | Description                                                                          |
+|----------------|--------------------------------------------------------------------------------------|
+| result         | The result of the Action's run. Possible values are `FAILED`, `SKIPPED`, `SUCCESS`.  |
+| releaseVersion | The releasing version string, e.g. `1.2.3` (`tag-prefix` is not included!)           |
+| releaseNotes   | The release notes.                                                                   |
 
+## Customizing Version Numbers and Commit Messages
 
-## Outputs
+There may be scenarios where you want to customize the version number for a release. For instance, if the current version is `3.4.5` but you prefer the new release to be `6.0.0` instead of `3.4.6` or `3.5.0` or `4.0.0`. Additionally, since commit messages are used to compile the release notes, you might want to customize which commit messages are analyzed and included.
 
-| Output         | Description                                                                |
-|----------------|----------------------------------------------------------------------------|
-| result         | The result of the action. Possible values: `FAILED`, `SKIPPED`, `SUCCESS`. |
-| releaseVersion | The released version string, e.g. `1.2.3` (`tag-prefix` is not included!)  |
-| releaseNotes   | The release notes.                                                         |
+These customizations can be achieved by using the `.semrelease/this_release` file located in the repository's root directory. This file is a simple text file containing the following information:
+
+```text
+# Lines starting with '#' are comments and will be ignored.
+
+Lines not starting with '#' are commit messages and will be used to analyze and compile the release notes.
+
+- Each line should contain a single commit message only.
+
+= Leading spaces and markers such as `-`, '=', `+`, etc. will be trimmed before analyzing the commit message.
+```
+
+If the `.semrelease/this_release` file does not exist or contains no commit messages, the Action will fallback to analyzing commit messages from the repository's commits.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the MIT License. See the [LICENSE.md](LICENSE.md) file for details.
 
 ## Support and Contribution
 
 Feel free to create [pull requests](https://github.com/btnguyen2k/action-semrelease/pulls) or [issues](https://github.com/btnguyen2k/action-semrelease/issues) to report bugs or suggest new features.
-Please search the existing issues before filing new issues to avoid duplicates. For new issues, file your bug or feature request as a new issue.
+Please search the existing issues before filing new ones to avoid duplicates. For new issues, file your bug or feature request as a new issue.
 
 If you find this project useful, please start it.
