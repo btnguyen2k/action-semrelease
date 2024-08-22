@@ -7,7 +7,8 @@
     "lint": "eslint .",
     "prepare": "ncc build src/index.js -o dist --source-map --license licenses.txt",
     "test": "jest --verbose --coverage --testTimeout 60000",
-    "all": "npm run lint && npm run prepare && npm run test"
+    "all": "npm run lint && npm run prepare && npm run test",
+    "dryrun": "jest --passWithNoTests --testTimeout 60000 test/dryrun.test.js"
   },
   "repository": {
     "type": "git",

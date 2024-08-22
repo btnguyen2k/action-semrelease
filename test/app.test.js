@@ -1,8 +1,6 @@
 const app = require('../src/app')
 
 function setupNonAuto() {
-  process.env['UNIT_TEST'] = 'true'
-
   process.env['INPUT_dry-run'] = process.env['DRY_RUN'] = 'true'
   process.env['INPUT_github-token'] = process.env['GITHUB_TOKEN'] || ''
   process.env['INPUT_tag-prefix'] = process.env['TAG_PREFIX'] || 'v'
