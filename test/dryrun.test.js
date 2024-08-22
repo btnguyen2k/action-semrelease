@@ -6,6 +6,7 @@ function setup() {
   process.env['INPUT_tag-prefix'] = process.env['TAG_PREFIX'] || 'v'
   process.env['INPUT_auto-mode'] = process.env['AUTO_MODE'] = 'true'
   process.env['INPUT_branches'] = process.env['BRANCHES'] = 'dev'
+  process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/action-semrelease'
 }
 
 test('dry-run', async() => {
