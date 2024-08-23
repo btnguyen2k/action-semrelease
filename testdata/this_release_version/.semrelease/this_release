@@ -4,4 +4,5 @@
 #!Version=4.0.0
 - Improvement: capitalize the first letter of each commit message.
 - Improved format of release notes with bullet points.
-- Feature: release version number can now be specified via `.semrelease/this_release`.
+#!Invalid=value
+#!invalid2
