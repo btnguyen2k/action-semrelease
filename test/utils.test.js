@@ -71,7 +71,7 @@ test('getReleaseOptionsFromFile - default', async() => {
   try {
     process.chdir('testdata/this_release_version')
     const options = await utils.getReleaseOptionsFromFile('')
-    expect(options).toEqual({releaseVersion: '4.0.0'})
+    expect(options).toEqual({releaseVersion: '4.0.0-rc0'})
   } finally {
     process.chdir(save)
   }
@@ -155,7 +155,7 @@ test('loadCommitMessagesFromFile - sample', async() => {
 })
 test('loadCommitMessagesFromFile - sample/default', async() => {
   const commitMessages = await utils.loadCommitMessagesFromFile('')
-  expect(commitMessages.length).toEqual(2)
+  expect(commitMessages.length).toEqual(3)
 })
 
 function getOctokitInstance() {
