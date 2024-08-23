@@ -1,7 +1,7 @@
 # This file has been cleaned up post-releasing version 3.4.0.
 # Generate its content quickly using the following command:
 #   git log origin..HEAD | grep "^\s" > .semrelease/this_release
-#!Version=4.0.0
+#!Version=4.0.0-rc1
 - Improvement: capitalize the first letter of each commit message.
 - Improved format of release notes with bullet points.
 - Feature: release version number can now be specified via `.semrelease/this_release`.
