@@ -62,6 +62,21 @@ test('getOptions - default values', () => {
   expect(options.changelogFile).toBe(defaultChangelogFile)
 })
 
+test('getReleaseOptionsFromFile - not-exists', async() => {
+  const options = await utils.getReleaseOptionsFromFile('not-exists')
+  expect(options).toEqual({})
+})
+test('getReleaseOptionsFromFile - default', async() => {
+  const save = process.cwd()
+  try {
+    process.chdir('testdata/this_release_version')
+    const options = await utils.getReleaseOptionsFromFile('')
+    expect(options).toEqual({releaseVersion: '4.0.0-rc0'})
+  } finally {
+    process.chdir(save)
+  }
+})
+
 test('incMinorSemver', () => {
   const version = {
     semver: '1.2.3-rc.1',
@@ -120,6 +135,15 @@ test('loadCommitMessagesFromFile - not-exists', async() => {
   expect(commitMessages).toBeNull()
 })
 
+test('loadCommitMessagesFromFile - error', async() => {
+  try {
+    const commitMessages = await utils.loadCommitMessagesFromFile('./.semrelease')
+    console.log(`Commit messages: ${commitMessages}`)
+  } catch (error) {
+    expect(error).toBeDefined()
+  }
+})
+
 test('loadCommitMessagesFromFile - empty', async() => {
   const commitMessages = await utils.loadCommitMessagesFromFile('testdata/this_release_empty')
   expect(commitMessages).toEqual([])
@@ -128,6 +152,10 @@ test('loadCommitMessagesFromFile - empty', async() => {
 test('loadCommitMessagesFromFile - sample', async() => {
   const commitMessages = await utils.loadCommitMessagesFromFile('testdata/this_release_sample')
   expect(commitMessages.length).toEqual(2)
+})
+test('loadCommitMessagesFromFile - sample/default', async() => {
+  const commitMessages = await utils.loadCommitMessagesFromFile('')
+  expect(commitMessages.length).toEqual(3)
 })
 
 function getOctokitInstance() {

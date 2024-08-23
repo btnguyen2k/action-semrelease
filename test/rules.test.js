@@ -76,7 +76,7 @@ test('generateReleaseNotes - changes', () => {
     'Renamed constant `GitHubToken` to `GITHUB_TOKEN`',
     'Replaced function `ParseChangeLog()` with `ParseReleaseMeta()`',
   ]
-  const expected = `### Changes\n\n${commitMessages[0]}\n${commitMessages[1]}`
+  const expected = `### Changes\n\n- ${commitMessages[0]}\n- ${commitMessages[1]}`
   const releaseNotes = rules.generateReleaseNotes(commitMessages)
   expect(releaseNotes).toEqual(expected)
 })
@@ -85,7 +85,7 @@ test('generateReleaseNotes - removed', () => {
   const commitMessages = [
     'Removed function `ValidateGitHubToken()`',
   ]
-  const expected = `### Removed\n\n${commitMessages[0]}`
+  const expected = `### Removed\n\n- ${commitMessages[0]}`
   const releaseNotes = rules.generateReleaseNotes(commitMessages)
   expect(releaseNotes).toEqual(expected)
 })
@@ -96,7 +96,7 @@ test('generateReleaseNotes - added/refactoring', () => {
     'chore(CI): cleanup tests',
     'Added function `ParseReleaseMeta()`',
   ]
-  const expected = `### Added/Refactoring\n\n${commitMessages[0]}\n${commitMessages[2]}`
+  const expected = `### Added/Refactoring\n\n- ${commitMessages[0]}\n- ${commitMessages[2]}`
   const releaseNotes = rules.generateReleaseNotes(commitMessages)
   expect(releaseNotes).toEqual(expected)
 })
@@ -107,7 +107,7 @@ test('generateReleaseNotes - fixed', () => {
     'Fixed the random crash issue',
     'Optimized package size',
   ]
-  const expected = `### Fixed/Improvement\n\n${commitMessages[0]}\n${commitMessages[1]}\n${commitMessages[2]}`
+  const expected = `### Fixed/Improvement\n\n- ${commitMessages[0]}\n- ${commitMessages[1]}\n- ${commitMessages[2]}`
   const releaseNotes = rules.generateReleaseNotes(commitMessages)
   expect(releaseNotes).toEqual(expected)
 })
@@ -116,7 +116,7 @@ test('generateReleaseNotes - security', () => {
   const commitMessages = [
     'Security: bump libsec to version x.y.z',
   ]
-  const expected = `### Security\n\n${commitMessages[0]}`
+  const expected = `### Security\n\n- ${commitMessages[0]}`
   const releaseNotes = rules.generateReleaseNotes(commitMessages)
   expect(releaseNotes).toEqual(expected)
 })
@@ -126,7 +126,7 @@ test('generateReleaseNotes - other', () => {
     'Dep(dev): bump eslint from 8.7.6 to 9.9.0',
     'Dep: upgrade @actions/core to 1.10.0',
   ]
-  const expected = `### Others\n\n${commitMessages[0]}\n${commitMessages[1]}`
+  const expected = `### Others\n\n- ${commitMessages[0]}\n- ${commitMessages[1]}`
   const releaseNotes = rules.generateReleaseNotes(commitMessages)
   expect(releaseNotes).toEqual(expected)
 })

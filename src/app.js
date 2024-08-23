@@ -58,15 +58,16 @@ async function createRelease(octokit, tagName, releaseNotes, isPrerelease, dryRu
 }
 
 async function computeReleaseMeta(octokit, options) {
-  // find out the last release version
-  let lastVersion
+  let lastVersion = utils.parseSemver('0.0.0')
   const filterCommits = {}
   const latestRelease = await utils.findLatestRelease(octokit, options.tagPrefix)
   if (latestRelease) {
+    // first, check if there is a release for the tag-prefix
     lastVersion = utils.parseSemver(latestRelease.tag_name.slice(options.tagPrefix.length))
     filterCommits.since = latestRelease.created_at
     core.info(`ℹ️ Found latest release <${latestRelease.tag_name}> (tag ${latestRelease.tag_name}) at <${latestRelease.created_at}>`)
   } else {
+    // if no release found for the tag-prefix, check if there is a tag that matches the tag-prefix
     core.info(`⚠️ No release found for tag-prefix <${options.tagPrefix}>, checking tags...`)
     const latestTag = await utils.findLatestTag(octokit, options.tagPrefix)
     if (latestTag) {
@@ -75,13 +76,14 @@ async function computeReleaseMeta(octokit, options) {
       filterCommits.since = commit.committer.date
       core.info(`ℹ️ Found latest tag <${latestTag.name}> at <${commit.committer.date}>`)
     } else {
-      lastVersion = utils.parseSemver('0.0.0')
+      // nothing found
       core.info(`ℹ️ No release/tag found for tag-prefix <${options.tagPrefix}>`)
     }
   }
 
-  // firstly, try to load commit messages from file .semrelease/this_release
   const commitLogsFile = '.semrelease/this_release'
+
+  // firstly, try to load commit messages from .semrelease/this_release
   core.info(`ℹ️ Try loading commit messages from file ${commitLogsFile}...`)
   let commitMessages = await utils.loadCommitMessagesFromFile(commitLogsFile)
   if (!commitMessages || commitMessages.length === 0) {
@@ -94,6 +96,7 @@ async function computeReleaseMeta(octokit, options) {
   const msgsBumpMajor = []
   const msgsBumpMinor = []
   const msgsBumpPatch = []
+  // secondly, parse commit messages to detect changes/updates
   rules.parseCommitMessages(commitMessages, (rule, msg) => {
     core.info(`⤴️ Detected ${rule.label} from commit message: ${msg}`)
     msgsBumpMajor.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
@@ -105,25 +108,39 @@ async function computeReleaseMeta(octokit, options) {
     msgsBumpPatch.push(`- ${msg.replace(/^\d+\.\s*/, '')}`)
   })
 
+  if (msgsBumpMajor.length+msgsBumpMinor.length+msgsBumpPatch.length === 0) {
+    core.info(`📣 No changes/updates detected.`)
+    return {
+      release_version: lastVersion,
+      release_notes: '',
+    }
+  }
+
+  const releaseOptions = await utils.getReleaseOptionsFromFile(commitLogsFile)
+  core.info(`ℹ️ releaseOptions: ${JSON.stringify(releaseOptions, null, 2)}`)
+  if (releaseOptions.releaseVersion) {
+    core.info(`✴️ Release version forced to ${releaseOptions.releaseVersion}.`)
+    const version = utils.parseSemver(releaseOptions.releaseVersion)
+    if (version) {
+      return {
+        release_version: version,
+        release_notes: rules.generateReleaseNotes(commitMessages),
+      }
+    }
+    throw new Error(`Invalid version number: ${releaseOptions.releaseVersion}`)
+  }
+
   const version = msgsBumpMajor.length > 0
     ? utils.incMajorSemver(lastVersion)
     : msgsBumpMinor.length > 0
       ? utils.incMinorSemver(lastVersion)
-      : msgsBumpPatch.length > 0
-        ? utils.incPatchSemver(lastVersion)
-        : lastVersion
+      : utils.incPatchSemver(lastVersion)
   if (parseInt(version.major) > parseInt(lastVersion.major)) {
     core.info(`📣 Breaking changes detected, releasing new MAJOR version...`)
   } else if (parseInt(version.minor) > parseInt(lastVersion.minor)) {
     core.info(`📣 New functionality updates detected, releasing new MINOR version...`)
-  } else if (parseInt(version.patch) > parseInt(lastVersion.patch)) {
-    core.info(`📣 Bug fix/patch/improvement updates detected, releasing new PATCH version...`)
   } else {
-    core.info(`📣 No changes/updates detected.`)
-    return {
-      release_version: version,
-      release_notes: '',
-    }
+    core.info(`📣 Bug fix/patch/improvement updates detected, releasing new PATCH version...`)
   }
   return {
     release_version: version,
@@ -149,10 +166,18 @@ async function semrelease() {
   const options = utils.getOptions()
   core.info(`ℹ️ options: ${JSON.stringify(options, null, 2)}`)
 
+  if (options.isAutoMode || options.changelogFile) {
+    core.warning(`⚠️ DEPRECATION WARNING`)
+    core.warning(`⚠️ auto-mode and changelog-file inputs are deprecated and will be removed in future versions.`)
+    core.warning(`⚠️ See https://github.com/btnguyen2k/action-semrelease for more details.`)
+  }
+
   // fetch release info
-  const releaseMeta = options.isAutoMode
-    ? await computeReleaseMeta(octokit, options)
-    : utils.parseReleaseMeta(options.changelogFile)
+  // v3.4.0: auto-mode is now deprecated
+  const releaseMeta = await computeReleaseMeta(octokit, options)
+  // const releaseMeta = options.isAutoMode
+  //   ? await computeReleaseMeta(octokit, options)
+  //   : utils.parseReleaseMeta(options.changelogFile)
   if (!releaseMeta || releaseMeta.release_version === '' || releaseMeta.release_notes === '') {
     core.info(`⚠️ No release info found, or release notes are empty, skipped.`)
     RESULT_SKIPPED.reason = 'No release info found, or release notes are empty.'

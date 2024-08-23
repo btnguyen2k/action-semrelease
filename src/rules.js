@@ -111,7 +111,7 @@ function generateReleaseNotes(commitMessages) {
   const sections = releaseNotesSections.map(section => {
     const messages = commitMessages.filter(message => {
       return section.rules.some(rule => rule.test(message))
-    })
+    }).map(message => '- ' + message.charAt(0).toUpperCase() + message.slice(1)) // capitalize the first letter && create bullet points
 
     return {title: section.title, messages}
   })
