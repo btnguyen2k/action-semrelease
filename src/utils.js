@@ -2,6 +2,7 @@ module.exports = {
   getOptions,
   loadCommitMessagesFromFile,
   loadCommitMessagesFromRepo,
+  getReleaseOptionsFromFile,
 
   deleteRefSilently,
   getAllBranches,
@@ -24,21 +25,25 @@ const github = require('@actions/github')
 const core = require('@actions/core')
 const fs = require('fs')
 
+async function readFileAsLines(filename) {
+  return await fs.promises.readFile(filename, {encoding: 'utf8'})
+    .catch(err => {
+      if (err.code === 'ENOENT') return null
+      throw err
+    }).then(data => data ? data.split(/\r?\n/) : null)
+}
+
 /**
- * Loads commit messages from the specified file.
+ * Loads commit messages from the specified file (default .semrelease/this_release).
  * @param commitLogsFile
  * @returns {Promise<string[]|null>}
  */
 async function loadCommitMessagesFromFile(commitLogsFile) {
-  if (fs.existsSync(commitLogsFile)) {
-    let commitLogs = fs.readFileSync(commitLogsFile, 'utf8').split('\n')
-    // trim spaces, leading bullet chars (- and =) && remove empty and comment lines
-    commitLogs = commitLogs
+  return await readFileAsLines(commitLogsFile || '.semrelease/this_release')
+    .then(commitLogs => commitLogs ? commitLogs
+      // trim spaces, leading bullet chars (- and =) && remove empty and comment lines
       .map(line => line.replace(/^[\s=-]*/, '').trim())
-      .filter(line => line !== '' && !line.startsWith('#'))
-    return commitLogs
-  }
-  return null
+      .filter(line => line !== '' && !line.startsWith('#')) : null)
 }
 
 /**
@@ -121,6 +126,24 @@ function getOptions() {
     const branches = branchesStr.trim().split(/[,;\s]+/)
     return branches.filter(branch => branch.trim() !== '')
   }
+}
+
+async function getReleaseOptionsFromFile(commitLogsFile) {
+  const releaseOptions = {}
+  await readFileAsLines(commitLogsFile || '.semrelease/this_release')
+    .then(commitLogs => {
+      if (commitLogs) {
+        commitLogs.forEach(line => {
+          const parts = line.trim().split('=')
+          if (parts.length === 2) {
+            if (parts[0].trim().toUpperCase() === '#!VERSION') {
+              releaseOptions['releaseVersion'] = parts[1].trim()
+            }
+          }
+        })
+      }
+    })
+  return releaseOptions
 }
 
 /*----------------------------------------------------------------------*/
