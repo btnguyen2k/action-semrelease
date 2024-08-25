@@ -65,49 +65,92 @@ The following regular expressions are used to detect breaking changes, new featu
 A breaking change is detected if any of the following rules match:
 
 /^[^a-z]*(break(ing)?\s+)?change([ds])?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[(break(ing)?\s+)?change([ds])?]:?\s+/i
+/^[^a-z]*\((break(ing)?\s+)?change([ds])?\):?\s+/i
 /^[^a-z]*break(ing)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*rem(ove([ds])?)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*ren(ame([ds])?)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*repl(ace([ds])?)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*redesign(ed|s)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[break(ing)?]:?\s+/i
+/^[^a-z]*\(break(ing)?\):?\s+/i
+/^[^a-z]*rem(ov(e|ing|es|ed))?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[rem(ov(e|ing|es|ed))?]:?\s+/i
+/^[^a-z]*\(rem(ov(e|ing|es|ed))?\):?\s+/i
+/^[^a-z]*.+(is|are|been)( now)? removed.*/i
+/^[^a-z]*.+no longer (available|support(s|ed)?).*/i
+/^[^a-z]*ren(am(e|ing|es|ed))?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[ren(am(e|ing|es|ed))?]:?\s+/i
+/^[^a-z]*\(ren(am(e|ing|es|ed))?\):?\s+/i
+/^[^a-z]*repl(ac(e|ing|es|ed))?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[repl(ac(e|ing|es|ed))?]:?\s+/i
+/^[^a-z]*\(repl(ac(e|ing|es|ed))?\):?\s+/i
+/^[^a-z]*redesign(ing|ed|s)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[redesign(ing|ed|s)?]:?\s+/i
+/^[^a-z]*\(redesign(ing|ed|s)?\):?\s+/i
 
 A new/deprecated feature is detected if any of the following rules match:
 
-/^[^a-z]*depr(ecate([ds])?)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*refactor(ed|s)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*add(ed|s)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*(new\s+)?feat(ure)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*depr(ecat(e|ing|ed|es))?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[depr(ecat(e|ing|ed|es))?]:?\s+/i
+/^[^a-z]*\(depr(ecat(e|ing|ed|es))?\):?\s+/i
+/^[^a-z]*.+(is|are|been)( now)? deprecated.*/i
+/^[^a-z]*refactor(ing|ed|s)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[refactor(ing|ed|s)?]:?\s+/i
+/^[^a-z]*\(refactor(ing|ed|s)?\):?\s+/i
+/^[^a-z]*.+(is|are|been)( now)? refactor(ed|ing).*/i
+/^[^a-z]*add(ing|ed|s)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[add(ing|ed|s)?]:?\s+/i
+/^[^a-z]*\(add(ing|ed|s)?\):?\s+/i
+/^[^a-z]*(new\s+)?feat(ure(s)?)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[(new\s+)?feat(ure(s)?)?]:?\s+/i
+/^[^a-z]*\((new\s+)?feat(ure(s)?)?\):?\s+/i
 
 A bug fix/improvement/optimization is detected if any of the following rules match:
 
-/^[^a-z]*fix(ed|es)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*patch(ed|es)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*improve(s|d|ment)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*fix(ing|ed|es)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[fix(ing|ed|es)?]:?\s+/i
+/^[^a-z]*\(fix(ing|ed|es)?\):?\s+/i
+/^[^a-z]*.+(is|are|been)( now)? fix(ed|ing).*/i
+/^[^a-z]*patch(ing|ed|es)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[patch(ing|ed|es)?]:?\s+/i
+/^[^a-z]*\(patch(ing|ed|es)?\):?\s+/i
+/^[^a-z]*.+(is|are|been)( now)? patch(ed|ing).*/i
+/^[^a-z]*impr(ov(ing|es|ed|ement)?)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[impr(ov(ing|es|ed|ement)?)?]:?\s+/i
+/^[^a-z]*\(impr(ov(ing|es|ed|ement)?)?\):?\s+/i
+/^[^a-z]*.+(is|are|been)( now)? improv(ed|ing).*/i
+/^[^a-z]*optimiz(e|ing|ation|es|ed)(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[optimiz(e|ing|ation|es|ed)]:?\s+/i
+/^[^a-z]*\(optimiz(e|ing|ation|es|ed)\):?\s+/i
+/^[^a-z]*.+(is|are|been)( now)? optimiz(ed|ing).*/i
 /^[^a-z]*perf(ormance)?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*optimiz(e|ation|es|ed)(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[perf(ormance)?]:?\s+/i
+/^[^a-z]*\(perf(ormance)?\):?\s+/i
 /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[sec(urity)?]:?\s+/i
+/^[^a-z]*\(sec(urity)?\):?\s+/i
+/^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[dep(endenc(y|ies))?]:?\s+/i
+/^[^a-z]*\(dep(endenc(y|ies))?\):?\s+/i
 ```
 
 The following table illustrates how commit messages are mapped to release versions:
 
-| Sample commit message                                                  | Release version   |
-|------------------------------------------------------------------------|-------------------|
-| BREAKING: hash function parameter is no longer optional                | New major release |
-| Changed hash function from MD5 to SHA1                                 | New major release |
-| Replace function `GetRelease()` with `GetLatestRelease()`              | New major release |
-| Removed: deprecated function `GetBranches()`                           | New major release |
-|                                                                        |                   |
-| Deprecated: class `CommitMessage` is now deprecated                    | New minor release |
-| Refactor class `HashUtils`                                             | New minor release |
-| Added new hash function `HashUtils::hashSha1()`                        | New minor release |
-| New feature: scan commit messages to build new release                 | New minor release |
-|                                                                        |                   |
-| Fixed typo in function `HashUtils::hashMd5()`                          | New patch release |
-| Patched: function `HashUtils::Crc32()` now returns correct value       | New patch release |
-| Improve performance of function `HashUtils::hashChain()`               | New patch release |
-| Dependency: bump `krypto` to v1.2.3                                    | New patch release |
-| Security: fix potential SQLi security vulnerability in class `DbUtils` | New patch release |
+| Sample commit message                                                    | Release version   |
+|--------------------------------------------------------------------------|-------------------|
+| [BREAKING CHANGE] Hash function parameter is no longer optional          | New major release |
+| Renamed hash function from MD5 to md5Hash                                | New major release |
+| Replaces function `GetRelease()` with `GetLatestRelease()`               | New major release |
+| API `GetBranches()` is removed and no longer available                   | New major release |
+|                                                                          |                   |
+| Method `MD5` is now deprecated and will be removed in future versions    | New minor release |
+| The class Hashing is refactored to use SHA256                            | New minor release |
+| Added new hash function `HashUtils::hashSha1()`                          | New minor release |
+| [New feature] scan commit messages to build new release                  | New minor release |
+|                                                                          |                   |
+| Fixed typo in function `HashUtils::hashMd5()`                            | New patch release |
+| Patched: function `HashUtils::Crc32()` now returns correct value         | New patch release |
+| perf(API) function `HashUtils::hashChain()` is now 100% faster           | New patch release |
+| Dependency(Dev) - bump `krypto` to v1.2.3                                | New patch release |
+| [SECURITY]: fix potential SQLi security vulnerability in class `DbUtils` | New patch release |
+| Docker image size has been optimized, reduced by half                    | New patch release |
 
 ### Inputs and Outputs
 
