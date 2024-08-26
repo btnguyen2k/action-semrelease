@@ -316,11 +316,11 @@ jobs:
           echo "---------- content of ${{ env.FILE_CHANGELOG }} ----------"
           cat ${{ env.FILE_CHANGELOG }}
 
-          # OPTIONAL: replace the placeholder <<VERSION>> in document/source files
+          # OPTIONAL: replace the placeholder v4.0.0-rc2 in document/source files
           echo "🕘 Updating VERSION string in other files..."
-          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./*.md
-          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./src/*.js
-          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./test/*.js
+          sed -i -E "s/v4.0.0-rc2/${{ env.TAG_PREFIX }}${VERSION}/" ./*.md
+          sed -i -E "s/v4.0.0-rc2/${{ env.TAG_PREFIX }}${VERSION}/" ./src/*.js
+          sed -i -E "s/v4.0.0-rc2/${{ env.TAG_PREFIX }}${VERSION}/" ./test/*.js
 
           echo "🕘 Committing metadata updates..."
           git config --global user.email "<>"
