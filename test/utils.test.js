@@ -154,8 +154,14 @@ test('loadCommitMessagesFromFile - sample', async() => {
   expect(commitMessages.length).toEqual(2)
 })
 test('loadCommitMessagesFromFile - sample/default', async() => {
-  const commitMessages = await utils.loadCommitMessagesFromFile('')
-  expect(commitMessages.length).toEqual(3)
+  const save = process.cwd()
+  try {
+    process.chdir('testdata/commit-messages-from-file-default')
+    const commitMessages = await utils.loadCommitMessagesFromFile('')
+    expect(commitMessages.length).toEqual(3)
+  } finally {
+    process.chdir(save)
+  }
 })
 
 function getOctokitInstance() {

@@ -1,5 +1,11 @@
 # SemRelease release notes
 
+## 2024-08-26 - v4.0.0-rc2
+
+### Fixed/Improvements
+
+- Improved commit message analyzing rules.
+
 ## 2024-08-23 - v4.0.0-rc1
 
 ### Added/Refactoring
