@@ -1,5 +1,17 @@
 # SemRelease release notes
 
+## 2025-04-27 - v4.0.0
+
+### Added/Refactoring/Deprecation
+
+- Feature: release version number can now be specified via `.semrelease/this_release`.
+
+### Fixed/Improvements
+
+- Improved commit message analyzing rules.
+- Improvement: capitalize the first letter of each commit message.
+- Improved format of release notes with bullet points.
+
 ## 2024-08-26 - v4.0.0-rc2
 
 ### Fixed/Improvements
