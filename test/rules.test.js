@@ -1,6 +1,21 @@
 const rules = require('../src/rules')
 
 describe('parseCommitMessages', () => {
+  test('none', () => {
+    const commitMessages = [
+      'No version bump',
+      'Because nothing changed',
+      'Or no commit messages that match the rules',
+    ]
+    const callbackBumpMajor = jest.fn()
+    const callbackBumpMinor = jest.fn()
+    const callbackBumpPatch = jest.fn()
+    rules.parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
+    expect(callbackBumpMajor).toHaveBeenCalledTimes(0)
+    expect(callbackBumpMinor).toHaveBeenCalledTimes(0)
+    expect(callbackBumpPatch).toHaveBeenCalledTimes(0)
+  })
+
   test('major only', () => {
     const commitMessages = [
       'chore(deps): bump libx from 1.0.0 to 2.0.0',
@@ -44,6 +59,32 @@ describe('parseCommitMessages', () => {
     expect(callbackBumpMajor).toHaveBeenCalledTimes(0)
     expect(callbackBumpMinor).toHaveBeenCalledTimes(0)
     expect(callbackBumpPatch).toHaveBeenCalledTimes(3)
+  })
+
+  test('more patch messages', () => {
+    const commitMessages = [
+      'Fixing incident #123',
+      '+ [FIXED] - Issue #123',
+      '- (fixes): bug #456',
+      '[filter message] will be ignored',
+      'Missing header on login page has been fixed',
+      '+ The random crash issue is now fixed',
+      '- Other minor issues are fixing',
+      '+ Another filter message',
+      'Patching the login flow that caused the app to crash',
+      '+ [patched]: product categories',
+      '- (patches): authentication flow',
+      '> patched(API): authorization with JWT',
+      '- [dep] Update dependencies.',
+      '[patch] Update Azure locations and product categories',
+    ]
+    const callbackBumpMajor = jest.fn()
+    const callbackBumpMinor = jest.fn()
+    const callbackBumpPatch = jest.fn()
+    rules.parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
+    expect(callbackBumpMajor).toHaveBeenCalledTimes(0)
+    expect(callbackBumpMinor).toHaveBeenCalledTimes(0)
+    expect(callbackBumpPatch).toHaveBeenCalledTimes(12)
   })
 
   test('all', () => {
