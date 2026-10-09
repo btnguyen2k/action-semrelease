@@ -27,11 +27,10 @@
   },
   "homepage": "https://github.com/btnguyen2k/action-semrelease#readme",
   "dependencies": {
-    "@actions/core": "^2.0.2",
+    "@actions/core": "^2.0.3",
     "@actions/github": "^7.0.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "^10.0.1",
     "@vercel/ncc": "^0.45.0",
     "eslint": "^10.11.0",
