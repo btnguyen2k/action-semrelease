@@ -5,3 +5,4 @@
 - patch(runtime): migrate to Node.js 24 runtime
 - build(deps): update @actions/core to 2.0.3
 - chore(lint): adopt native ESLint flat config
+- refactor(test): simplify Jest configuration
