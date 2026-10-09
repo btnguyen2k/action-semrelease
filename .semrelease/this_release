@@ -6,3 +6,4 @@
 - build(deps): update @actions/core to 2.0.3
 - chore(lint): adopt native ESLint flat config
 - refactor(test): simplify Jest configuration
+- chore(lint): migrate formatting rules to @stylistic
