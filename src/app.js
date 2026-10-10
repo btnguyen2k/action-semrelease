@@ -166,18 +166,8 @@ async function semrelease() {
   const options = utils.getOptions()
   core.info(`ℹ️ options: ${JSON.stringify(options, null, 2)}`)
 
-  if (options.isAutoMode || options.changelogFile) {
-    core.warning(`⚠️ DEPRECATION WARNING`)
-    core.warning(`⚠️ auto-mode and changelog-file inputs are deprecated and will be removed in future versions.`)
-    core.warning(`⚠️ See https://github.com/btnguyen2k/action-semrelease for more details.`)
-  }
-
   // fetch release info
-  // v3.4.0: auto-mode is now deprecated
   const releaseMeta = await computeReleaseMeta(octokit, options)
-  // const releaseMeta = options.isAutoMode
-  //   ? await computeReleaseMeta(octokit, options)
-  //   : utils.parseReleaseMeta(options.changelogFile)
   if (!releaseMeta || releaseMeta.release_version === '' || releaseMeta.release_notes === '') {
     core.info(`⚠️ No release info found, or release notes are empty, skipped.`)
     RESULT_SKIPPED.reason = 'No release info found, or release notes are empty.'

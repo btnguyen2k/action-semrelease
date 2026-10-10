@@ -1,27 +1,6 @@
 import * as utils from '../src/utils.js'
 import * as github from '@actions/github'
 
-test('parse release-notes', () => {
-  const releaseNotes = utils.parseReleaseMeta()
-  expect(releaseNotes).toBeDefined()
-})
-
-test('parse release-notes - specific changelog file', () => {
-  const releaseNotes = utils.parseReleaseMeta('testdata/CHANGELOG.md')
-  expect(releaseNotes).toBeDefined()
-})
-
-test('parse release-notes from change-log file', () => {
-  const save = process.cwd()
-  try {
-    process.chdir('testdata/')
-    const releaseNotes = utils.parseReleaseMeta()
-    expect(releaseNotes).toBeDefined()
-  } finally {
-    process.chdir(save)
-  }
-})
-
 test('incMajorSemver', () => {
   const version = {
     semver: '1.2.3-rc.1',
@@ -42,24 +21,20 @@ test('incMajorSemver', () => {
 
 test('getOptions - default values', () => {
   const defaultDryRun = false
-  const defaultAutoMode = false
   const defaultTagMajorRelease = true
   const defaultTagMinorRelease = false
   const defaultTagPrefix = 'v'
   const defaultBranches = ['main', 'master']
   const defaultTagOnly = false
   const defaultPath = ''
-  const defaultChangelogFile = ''
   const options = utils.getOptions()
   expect(options.isDryRun).toBe(defaultDryRun)
-  expect(options.isAutoMode).toBe(defaultAutoMode)
   expect(options.isTagMajorRelease).toBe(defaultTagMajorRelease)
   expect(options.isTagMinorRelease).toBe(defaultTagMinorRelease)
   expect(options.tagPrefix).toBe(defaultTagPrefix)
   expect(options.branches).toEqual(defaultBranches)
   expect(options.isTagOnly).toBe(defaultTagOnly)
   expect(options.scanPath).toBe(defaultPath)
-  expect(options.changelogFile).toBe(defaultChangelogFile)
 })
 
 test('getReleaseOptionsFromFile - not-exists', async() => {

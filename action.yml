@@ -24,16 +24,12 @@ inputs:
     description: 'If set, a minor release tag will be created, e.g. v1.2'
     required: false
     default: 'false'
-  auto-mode:
-    description: 'If set, next release version is automatically determined, ignoring the information in RELEASE-NOTES or CHANGELOG file'
-    required: false
-    default: 'false'
   branches:
-    description: 'Branches to fetch commit messages for release notes (auto-mode only)'
+    description: 'Branches to fetch commit messages for release notes'
     required: false
     default: 'main,master'
   path:
-    description: 'Scan only commits containing this file path (auto-mode only)'
+    description: 'Scan only commits containing this file path'
     required: false
     default: ''
   tag-only:

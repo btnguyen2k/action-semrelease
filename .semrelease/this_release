@@ -9,3 +9,4 @@
 - refactor(action): migrate internals to native ESM
 - build(deps): upgrade @actions/core to 3.0.1
 - build(deps): upgrade @actions/github to 9.1.1
+- BREAKING CHANGE: remove deprecated release metadata inputs

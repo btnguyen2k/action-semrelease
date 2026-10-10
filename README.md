@@ -175,8 +175,9 @@ The following inputs are accepted:
 | branches                      | No       | `'main,master'` | Comma-separated list of branches to scan for commit messages.                 |
 | path                          | No       | `''`            | Scan and Analyze only commits containing this file path.                      |
 
-> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md), the `auto-mode` and `changelog-file` inputs are deprecated
-> and will be removed in future releases.
+> **Migrating to v5:** the `auto-mode` and `changelog-file` inputs and their `AUTO_MODE` and `CHANGELOG_FILE` environment variables have been removed.
+> Version calculation is always automatic; `RELEASE-NOTES` and `CHANGELOG` files are no longer parsed for release metadata.
+> Remove the obsolete inputs from workflows. To supply commit messages or force a version, use `.semrelease/this_release` as described below.
 
 This Action outputs the following:
 

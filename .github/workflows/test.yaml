@@ -60,18 +60,18 @@ jobs:
         run: npm ci
       - name: Rebuild the dist/ directory
         run: npm run prepare
-      - name: Run Action (non-auto)
-        id: run-action-non-auto
+      - name: Run Action (default branches)
+        id: run-action-default
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
           tag-prefix: vt
-      - name: Check output (non-auto)
+      - name: Check output (default branches)
         run: |
-          RESULT='${{ steps.run-action-non-auto.outputs.result }}'
-          VERSION='${{ steps.run-action-non-auto.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-non-auto.outputs.releaseNotes }}'
+          RESULT='${{ steps.run-action-default.outputs.result }}'
+          VERSION='${{ steps.run-action-default.outputs.releaseVersion }}'
+          RELEASE_NOTES='${{ steps.run-action-default.outputs.releaseNotes }}'
           echo -e Result: ${RESULT}
           echo -e Version: ${VERSION}
           echo -e Release Notes: ${RELEASE_NOTES}
@@ -98,20 +98,19 @@ jobs:
         run: npm ci
       - name: Rebuild the dist/ directory
         run: npm run prepare
-      - name: Run Action (auto-mode)
-        id: run-action-auto-mode
+      - name: Run Action (branch scan)
+        id: run-action-branches
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
-          auto-mode: true
           branches: main, release, dev, not-exists
           tag-prefix: va
-      - name: Check output (auto-mode)
+      - name: Check output (branch scan)
         run: |
-          RESULT='${{ steps.run-action-auto-mode.outputs.result }}'
-          VERSION='${{ steps.run-action-auto-mode.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-auto-mode.outputs.releaseNotes }}'
+          RESULT='${{ steps.run-action-branches.outputs.result }}'
+          VERSION='${{ steps.run-action-branches.outputs.releaseVersion }}'
+          RELEASE_NOTES='${{ steps.run-action-branches.outputs.releaseNotes }}'
           echo -e Result: ${RESULT}
           echo -e Version: ${VERSION}
           echo -e Release Notes: ${RELEASE_NOTES}
@@ -153,7 +152,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
-          auto-mode: true
           branches: main, release, dev, not-exists
           tag-prefix: v
       - name: Check output (dry-run)

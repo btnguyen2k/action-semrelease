@@ -15,7 +15,6 @@ export {
   getTag,
 
   parseSemver,
-  parseReleaseMeta,
   incMajorSemver,
   incMinorSemver,
   incPatchSemver,
@@ -77,13 +76,11 @@ async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scan
 
 /**
  * Convenience function to construct Option struct from inputs and environment variables.
- * @returns {{isTagMajorRelease: boolean, tagPrefix: string, changelogFile: string, isTagOnly: boolean, scanPath: string, isAutoMode: boolean, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
+ * @returns {{isTagMajorRelease: boolean, tagPrefix: string, isTagOnly: boolean, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
  */
 function getOptions() {
   const inputDryRun = 'dry-run'
   const defaultDryRun = 'false'
-  const inputAutoMode = 'auto-mode'
-  const defaultAutoMode = 'false'
   const inputTagMajorRelease = 'tag-major-release'
   const defaultTagMajorRelease = 'true'
   const inputTagMinorRelease = 'tag-minor-release'
@@ -96,19 +93,15 @@ function getOptions() {
   const defaultTagOnly = 'false'
   const inputPath = 'path'
   const defaultPath = ''
-  const inputChangelogFile = 'changelog-file'
-  const defaultChangelogFile = ''
 
   return {
     isDryRun: optDryRun(),
-    isAutoMode: String(core.getInput(inputAutoMode) || process.env['AUTO_MODE'] || defaultAutoMode).toLowerCase() === 'true',
     isTagMajorRelease: String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true',
     isTagMinorRelease: String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true',
     tagPrefix: String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix),
     branches: optBranches(),
     isTagOnly: String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true',
     scanPath: String(core.getInput(inputPath) || process.env['SCAN_PATH'] || defaultPath),
-    changelogFile: String(core.getInput(inputChangelogFile) || process.env['CHANGELOG_FILE'] || defaultChangelogFile),
   }
 
   // dry-run mode is enabled if any of the following is true:
@@ -310,7 +303,6 @@ async function getTag(octokit, sha) {
 
 /*----------------------------------------------------------------------*/
 
-const reSemverInHeading = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)/
 const reSemver = /^v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
 const reSemverRaw = /^((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
 
@@ -326,89 +318,6 @@ function parseSemver(text) {
     }
   }
   return null
-}
-
-/**
- * Parses release notes from specified file.
- * @param file
- * @returns {{release_notes: string, release_version: string}|null}
- */
-function parse(file) {
-  const releaseNotes = []
-  let enterReleaseNotes = false
-  let version = null
-  const data = fs.readFileSync(file, {encoding: 'utf8'}).toString()
-  const lines = data.split(/\r?\n/)
-  for (const line of lines) {
-    const matches = line.match(reSemverInHeading)
-    if (matches) {
-      if (enterReleaseNotes) {
-        break
-      }
-      enterReleaseNotes = true
-      version = parseSemver(matches[1].trim())
-    } else if (enterReleaseNotes) {
-      releaseNotes.push(line.trim())
-    }
-  }
-  return version !== null ?{
-    release_version: version,
-    release_notes: releaseNotes.join('\n').trim()
-  } : null
-}
-
-const releaseNotesFilenames = [
-  "RELEASE-NOTES.md", "RELEASE_NOTES.MD", "RELEASE-NOTES",
-  "RELEASE_NOTES.md", "RELEASE_NOTES.MD", "RELEASE_NOTES",
-  "release-notes.md", "release-notes",
-  "release_notes.md", "release_notes",
-]
-
-const changelogFilenames = [
-  "CHANGELOG.md", "CHANGELOG.MD", "CHANGELOG",
-  "CHANGE-LOG.md", "CHANGE-LOG.MD", "CHANGE-LOG",
-  "CHANGE_LOG.md", "CHANGE_LOG.MD", "CHANGE_LOG",
-  "changelog.md", "changelog",
-  "change-log.md", "change-log",
-  "change_log.md", "change_log",
-]
-
-/**
- * Parses release metadata from specified change log file.
- *
- * If the specified file does not exist, the function will try to scan common release notes files.
- *
- * @param changelogFile
- * @returns {{release_notes: string, release_version: string}|null}
- */
-function parseReleaseMeta(changelogFile) {
-  core.warning(`⚠️ DEPRECATION WARNING`)
-  core.warning(`⚠️ Parsing changelog file for release info is deprecated and will be removed in future versions.`)
-  core.warning(`⚠️ Please use .senrelease/this_release file instead. See https://github.com/btnguyen2k/action-semrelease for more details.`)
-  if (changelogFile && fs.existsSync(changelogFile)) {
-    // changelog file is specified and exists
-    return parse(changelogFile)
-  }
-
-  // scan common release notes files
-  for (const file of releaseNotesFilenames) {
-    if (fs.existsSync(file)) {
-      const result = parse(file)
-      if (!result) {
-        // release notes file exists but no release info found, so skip to check changelog file
-        break
-      }
-      // release notes file exists and release info found
-      return result
-    }
-  }
-
-  // scan common changelog files
-  for (const file of changelogFilenames) {
-    if (fs.existsSync(file)) {
-      return parse(file)
-    }
-  }
 }
 
 function incMajorSemver(version) {
