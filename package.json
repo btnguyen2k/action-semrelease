@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "lint": "eslint .",
-    "prepare": "ncc build src/index.cjs -o dist --source-map --license licenses.txt",
+    "clean": "node -e \"const fs = require('node:fs'); const path = require('node:path'); for (const entry of fs.readdirSync('dist', {withFileTypes: true})) { if (entry.isFile() && (/\\.(?:c?js)(?:\\.map)?$/.test(entry.name) || entry.name === 'licenses.txt')) fs.unlinkSync(path.join('dist', entry.name)); }\"",
+    "prepare": "npm run clean && ncc build src/index.cjs -o dist --source-map --license licenses.txt",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --verbose --coverage --testTimeout 60000",
     "all": "npm run lint && npm run prepare && npm run test",
     "dryrun": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests --testTimeout 60000 test/dryrun.test.js"

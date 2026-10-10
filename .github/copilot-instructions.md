@@ -5,7 +5,8 @@ A JavaScript GitHub Action (`action.yml`, `runs.using: node*`, `main: dist/index
 ## Commands
 
 - Lint: `npm run lint`
-- Build bundle: `npm run prepare` (`ncc` bundles `src/index.cjs` into `dist/` with source map and `licenses.txt`)
+- Clean generated files: `npm run clean` (removes generated JavaScript, source maps and licenses from `dist/`, preserving `package.json`)
+- Build bundle: `npm run prepare` (cleans first, then `ncc` bundles `src/index.cjs` into `dist/` with source maps and `licenses.txt`)
 - All (lint + build + test): `npm run all`
 - Tests: `npm test` (Jest, 60s timeout, coverage)
 - Single test file: `npm test -- test/rules.test.js`; single test: `npm test -- test/utils.test.js -t "name"`
@@ -32,7 +33,7 @@ export GITHUB_REPOSITORY=btnguyen2k/action-semrelease
 - Source and tests use native ESM with explicit `.js` extensions on local imports. Jest runs through the npm scripts with `--experimental-vm-modules` and transforms disabled.
 - `src/index.cjs` imports the ESM entry point so ncc emits a CommonJS `dist/index.cjs` bundle and supporting chunks. Keep `dist/package.json` set to `"type": "commonjs"` so `.js` chunks load correctly.
 
-- **`dist/` is committed and is what runs.** After any change under `src/`, run `npm run prepare` and commit the updated `dist/`. CI also rebuilds it.
+- **`dist/` is committed and is what runs.** Validate source/runtime dependency changes with `npm run prepare`. The build workflow commits generated artifacts; do not commit them from the dev machine. Commit the manually maintained `dist/package.json` from the dev machine.
 - Each input is read as `core.getInput(name) || process.env[ENV_NAME] || default`, which lets tests drive the code via env vars (`DRY_RUN`, `TAG_PREFIX`, `AUTO_MODE`, `BRANCHES`, `TAG_ONLY`, `SCAN_PATH`, `CHANGELOG_FILE`). When adding an input, update `action.yml`, `getOptions()` and the README.
 - Dry-run is enabled by the `dry-run` input, `DRY_RUN=true`, or a `.semrelease-dry-run` file in the repo root. Every write to GitHub (tags, refs, releases) must go through the `dryRun` guard.
 - `.semrelease/this_release` can force a version with a `#!VERSION=x.y.z` line. The action never cleans this file up.
