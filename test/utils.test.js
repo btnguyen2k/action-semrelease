@@ -1,5 +1,5 @@
-const utils = require('../src/utils')
-const github = require('@actions/github')
+import * as utils from '../src/utils.js'
+import * as github from '@actions/github'
 
 test('parse release-notes', () => {
   const releaseNotes = utils.parseReleaseMeta()

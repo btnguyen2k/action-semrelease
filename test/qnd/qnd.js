@@ -1,5 +1,6 @@
-const utils = require('../../src/utils')
-const github = require('@actions/github')
+import * as utils from '../../src/utils.js'
+import * as github from '@actions/github'
+import * as rules from '../../src/rules.js'
 
 function getOctokitInstance() {
   const githubToken = process.env['GITHUB_TOKEN'] || ''
@@ -67,7 +68,6 @@ async function main() {
   const commits = await utils.getAllCommits(octokit)
   const commitMessages = commits.map(commit => commit.commit.message)
 
-  const rules = require('../../src/rules')
   const releaseNotes = rules.generateReleaseNotes(commitMessages)
   console.log(releaseNotes)
 }

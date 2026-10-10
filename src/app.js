@@ -1,7 +1,7 @@
-const core = require('@actions/core')
-const github = require('@actions/github')
-const utils = require('./utils')
-const rules = require('./rules')
+import * as core from '@actions/core'
+import * as github from '@actions/github'
+import * as utils from './utils.js'
+import * as rules from './rules.js'
 
 const inputGithubToken = 'github-token'
 const outputResultSkipped = 'SKIPPED'
@@ -217,6 +217,6 @@ async function semrelease() {
   }
 }
 
-module.exports = {
+export {
   semrelease,
 }

@@ -1,4 +1,4 @@
-const app = require('../src/app')
+import * as app from '../src/app.js'
 
 function setup() {
   process.env['INPUT_dry-run'] = process.env['DRY_RUN'] = 'true'

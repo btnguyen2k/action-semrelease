@@ -1,4 +1,4 @@
-module.exports = {
+export {
   getOptions,
   loadCommitMessagesFromFile,
   loadCommitMessagesFromRepo,
@@ -21,9 +21,9 @@ module.exports = {
   incPatchSemver,
 }
 
-const github = require('@actions/github')
-const core = require('@actions/core')
-const fs = require('fs')
+import * as github from '@actions/github'
+import * as core from '@actions/core'
+import fs from 'node:fs'
 
 async function readFileAsLines(filename) {
   return await fs.promises.readFile(filename, {encoding: 'utf8'})

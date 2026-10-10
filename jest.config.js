@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   restoreMocks: true,
   clearMocks: true,
   collectCoverage: true,
@@ -7,7 +7,8 @@ module.exports = {
   ],
   coveragePathIgnorePatterns: [
     'app.js',
-    'index.js'
+    'index.js',
+    'index.cjs'
   ],
   coverageDirectory: 'coverage',
   coverageThreshold: {
@@ -19,4 +20,5 @@ module.exports = {
     }
   },
   testRegex: /\.test\.jsx?$/.source,
+  transform: {},
 }

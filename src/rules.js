@@ -172,7 +172,7 @@ const releaseNotesSections = [
   }
 ]
 
-module.exports = {
+export {
   parseCommitMessages,
   generateReleaseNotes
 }

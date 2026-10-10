@@ -56,11 +56,6 @@ export default [{
     "no-var": "error",
   },
 }, {
-  files: ["**/*.js"],
-  languageOptions: {
-    sourceType: "commonjs",
-  },
-}, {
   files: ["test/**/*.test.js"],
   languageOptions: {
     globals: globals.jest,

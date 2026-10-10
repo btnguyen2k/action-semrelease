@@ -1,4 +1,5 @@
-const rules = require('../src/rules')
+import * as rules from '../src/rules.js'
+import {jest} from '@jest/globals'
 
 describe('parseCommitMessages', () => {
   test('none', () => {

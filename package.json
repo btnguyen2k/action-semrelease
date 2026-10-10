@@ -3,12 +3,13 @@
   "version": "4.0.0",
   "description": "GitHub Action to publish releases using tags, following semantic versioning",
   "main": "src/index.js",
+  "type": "module",
   "scripts": {
     "lint": "eslint .",
-    "prepare": "ncc build src/index.js -o dist --source-map --license licenses.txt",
-    "test": "jest --verbose --coverage --testTimeout 60000",
+    "prepare": "ncc build src/index.cjs -o dist --source-map --license licenses.txt",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --verbose --coverage --testTimeout 60000",
     "all": "npm run lint && npm run prepare && npm run test",
-    "dryrun": "jest --passWithNoTests --testTimeout 60000 test/dryrun.test.js"
+    "dryrun": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests --testTimeout 60000 test/dryrun.test.js"
   },
   "repository": {
     "type": "git",
@@ -27,8 +28,8 @@
   },
   "homepage": "https://github.com/btnguyen2k/action-semrelease#readme",
   "dependencies": {
-    "@actions/core": "^2.0.3",
-    "@actions/github": "^7.0.0"
+    "@actions/core": "^3.0.1",
+    "@actions/github": "^9.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
