@@ -9,6 +9,7 @@ A JavaScript GitHub Action (`action.yml`, `runs.using: node*`, `main: dist/index
 - Build bundle: `npm run prepare` (cleans first, then `ncc` bundles `src/index.cjs` into `dist/` with source maps and `licenses.txt`)
 - All (lint + build + test): `npm run all`
 - Tests: `npm test` (Jest, 60s timeout, coverage)
+- Offline unit tests: `npm test -- test/utils-offline.test.js test/app-offline.test.js --coverage=false` (mocked GitHub APIs; no token or repository setup required). Full-suite coverage thresholds still apply to `npm test`.
 - Single test file: `npm test -- test/rules.test.js`; single test: `npm test -- test/utils.test.js -t "name"`
 - Dry run against the real repo: `npm run dryrun`
 
