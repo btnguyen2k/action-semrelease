@@ -3,6 +3,9 @@ export {
   loadCommitMessagesFromFile,
   loadCommitMessagesFromRepo,
   getReleaseOptionsFromFile,
+  readReleaseLinesAtCommit,
+  resolveTagCommit,
+  normalizeReleaseVersion,
 
   deleteRefSilently,
   getAllBranches,
@@ -37,8 +40,8 @@ async function readFileAsLines(filename) {
  * @param commitLogsFile
  * @returns {Promise<string[]|null>}
  */
-async function loadCommitMessagesFromFile(commitLogsFile) {
-  return await readFileAsLines(commitLogsFile || '.semrelease/this_release')
+async function loadCommitMessagesFromFile(commitLogsFile, lines) {
+  return await (lines === undefined ? readFileAsLines(commitLogsFile || '.semrelease/this_release') : Promise.resolve(lines))
     .then(commitLogs => commitLogs ? commitLogs
       // trim spaces, leading bullet chars (- and =) && remove empty and comment lines
       .map(line => line.replace(/^[\s=-]*/, '').trim())
@@ -53,15 +56,36 @@ async function loadCommitMessagesFromFile(commitLogsFile) {
  * @param scanPath
  * @returns {Promise<string[]>}
  */
-async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath) {
+async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath, targetSha) {
   const commitMessages = []
+  let reachable
+  if (targetSha) {
+    const params = {...filterCommits, sha: targetSha}
+    if (scanPath) params.path = scanPath
+    reachable = new Set((await getAllCommits(octokit, params)).map(commit => commit.sha))
+  }
   for (const branch of branches) {
-    const params = {...filterCommits, sha: branch}
+    let sha = branch
+    if (targetSha) {
+      try {
+        const {data: tip} = await octokit.rest.repos.getCommit({
+          owner: github.context.repo.owner,
+          repo: github.context.repo.repo,
+          ref: branch,
+        })
+        sha = tip.sha
+      } catch (error) {
+        if (error.status !== 404) throw error
+        continue
+      }
+    }
+    const params = {...filterCommits, sha}
     if (scanPath) {
       params.path = scanPath
     }
     const commits = await getAllCommits(octokit, params)
     for (const commit of commits) {
+      if (reachable && !reachable.has(commit.sha)) continue
       // trim spaces, leading bullet chars (- and =)
       const commitMsg = commit.commit.message.replace(/^[\s=-]*/, '').trim()
       commitMessages.push(commitMsg)
@@ -76,7 +100,7 @@ async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scan
 
 /**
  * Convenience function to construct Option struct from inputs and environment variables.
- * @returns {{isTagMajorRelease: boolean, tagPrefix: string, isTagOnly: boolean, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
+ * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, isTagOnly: boolean, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
  */
 function getOptions() {
   const inputDryRun = 'dry-run'
@@ -96,6 +120,7 @@ function getOptions() {
 
   return {
     isDryRun: optDryRun(),
+    targetSha: core.getInput('target-sha') || github.context.sha,
     isTagMajorRelease: String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true',
     isTagMinorRelease: String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true',
     tagPrefix: String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix),
@@ -121,9 +146,9 @@ function getOptions() {
   }
 }
 
-async function getReleaseOptionsFromFile(commitLogsFile) {
+async function getReleaseOptionsFromFile(commitLogsFile, lines) {
   const releaseOptions = {}
-  await readFileAsLines(commitLogsFile || '.semrelease/this_release')
+  await (lines === undefined ? readFileAsLines(commitLogsFile || '.semrelease/this_release') : Promise.resolve(lines))
     .then(commitLogs => {
       if (commitLogs) {
         commitLogs.forEach(line => {
@@ -137,6 +162,54 @@ async function getReleaseOptionsFromFile(commitLogsFile) {
       }
     })
   return releaseOptions
+}
+
+async function readReleaseLinesAtCommit(octokit, targetSha) {
+  try {
+    const {data: file} = await octokit.rest.repos.getContent({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      path: '.semrelease/this_release',
+      ref: targetSha,
+    })
+    if (Array.isArray(file) || file.type !== 'file' || file.encoding !== 'base64') {
+      throw new Error('Expected .semrelease/this_release to be a base64-encoded file')
+    }
+    return Buffer.from(file.content, 'base64').toString('utf8').split(/\r?\n/)
+  } catch (error) {
+    if (error.status === 404) return null
+    throw error
+  }
+}
+
+async function resolveTagCommit(octokit, tagName) {
+  const ref = await getRefByTagName(octokit, tagName)
+  if (!ref) return null
+  let object = ref.object
+  for (let depth = 0; depth < 16; depth++) {
+    if (object.type === 'commit') return object.sha
+    if (object.type !== 'tag') {
+      throw new Error(`Tag ${tagName} references unsupported object type ${object.type}`)
+    }
+    const tag = await getTag(octokit, object.sha)
+    if (!tag) throw new Error(`Tag object ${object.sha} for ${tagName} was not found`)
+    object = tag.object
+  }
+  throw new Error(`Tag ${tagName} contains too many nested tag objects`)
+}
+
+function normalizeReleaseVersion(text) {
+  let version = parseSemver(text)
+  if (!version) {
+    const partial = text.match(/^v?((?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*))?)([-+].*)?$/)
+    if (partial) {
+      const components = partial[1].split('.')
+      while (components.length < 3) components.push('0')
+      version = parseSemver(components.join('.') + (partial[2] || ''))
+    }
+  }
+  if (!version) throw new Error(`Invalid version number: ${text}`)
+  return version
 }
 
 /*----------------------------------------------------------------------*/

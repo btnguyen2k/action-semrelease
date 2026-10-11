@@ -169,6 +169,7 @@ The following inputs are accepted:
 |-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
 | github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
 | dry-run                       | No       | `false`         | If `true`, the Action will run in dry-run mode.                               |
+| target-sha                    | No       | Event SHA       | Commit SHA to release; metadata and tags are pinned to this commit.           |
 | tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
 | tag-major-release             | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                     |
 | tag-minor-release             | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                   |
@@ -188,6 +189,13 @@ This Action outputs the following:
 | releaseNotes   | The release notes.                                                                   |
 
 ## Customizing Version Numbers and Commit Messages
+
+The action reads `.semrelease/this_release` from GitHub at `target-sha` (or the workflow event SHA), not from uncommitted workspace changes.
+If the file yields no recognized release notes, it falls back to commit logs. Branch tips are resolved once per scan, and only commits reachable from the target commit are included, with the existing branch and path filters.
+Custom versions such as `4` and `4.1` are normalized to `4.0.0` and `4.1.0`; versions that cannot be normalized to valid Semantic Versioning cause an error.
+
+Full version tags are immutable: an existing tag at the target commit is reused, and a tag at another commit causes an error, even if its release already exists.
+Enabled major/minor alias tags are still recreated at the target commit when publishing; the existing skip behavior for an already-published release remains unchanged.
 
 There may be scenarios where you want to customize the version number for a release. For instance, if the current version is `3.4.5` but you prefer the new release to be `6.0.0` instead of `3.4.6` or `3.5.0` or `4.0.0`. Additionally, since commit messages are used to compile the release notes, you might want to customize which commit messages are analyzed and included.
 

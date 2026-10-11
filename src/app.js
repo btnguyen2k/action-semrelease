@@ -7,14 +7,26 @@ const inputGithubToken = 'github-token'
 const outputResultSkipped = 'SKIPPED'
 const outputResultSuccess = 'SUCCESS'
 
-async function createTag(octokit, tagName, dryRun) {
+async function verifyReleaseTag(octokit, tagName, targetSha) {
+  const existing = await utils.resolveTagCommit(octokit, tagName)
+  if (existing && existing !== targetSha) {
+    throw new Error(`Refusing to move release tag ${tagName}: it points to ${existing}, expected ${targetSha}`)
+  }
+  return existing
+}
+
+async function createTag(octokit, tagName, targetSha, dryRun, movable = false) {
+  if (!movable && await verifyReleaseTag(octokit, tagName, targetSha)) {
+    core.info(`Release tag ${tagName} already points to ${targetSha}; reusing it.`)
+    return
+  }
   core.info(`🕘 Creating tag ${tagName}...`)
   const createTagParams = {
     owner: github.context.repo.owner,
     repo: github.context.repo.repo,
     tag: tagName,
     message: `Release ${tagName}`,
-    object: github.context.sha,
+    object: targetSha,
     type: 'commit',
   }
   if (dryRun) {
@@ -26,7 +38,7 @@ async function createTag(octokit, tagName, dryRun) {
     const refFull = `refs/tags/${tagName}`
     const refShort = `tags/${tagName}`
     core.info(`🕘 Cleaning ${refFull}...`)
-    await utils.deleteRefSilently(octokit, refShort)
+    if (movable) await utils.deleteRefSilently(octokit, refShort)
     const createRefParams = {
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
@@ -34,8 +46,14 @@ async function createTag(octokit, tagName, dryRun) {
       sha: tagInfo.sha,
     }
     core.info(`🕘 Creating ${refFull}...`)
-    const {data: refInfo} = await octokit.rest.git.createRef(createRefParams)
-    core.info(`✅ Ref created: ${JSON.stringify(refInfo, null, 2)}`)
+    try {
+      const {data: refInfo} = await octokit.rest.git.createRef(createRefParams)
+      core.info(`✅ Ref created: ${JSON.stringify(refInfo, null, 2)}`)
+    } catch (error) {
+      if (movable || error.status !== 422) throw error
+      if (!await verifyReleaseTag(octokit, tagName, targetSha)) throw error
+      core.info(`Release tag ${tagName} concurrently created at ${targetSha}; reusing it.`)
+    }
   }
 }
 
@@ -85,12 +103,13 @@ async function computeReleaseMeta(octokit, options) {
 
   // firstly, try to load commit messages from .semrelease/this_release
   core.info(`ℹ️ Try loading commit messages from file ${commitLogsFile}...`)
-  let commitMessages = await utils.loadCommitMessagesFromFile(commitLogsFile)
-  if (!commitMessages || commitMessages.length === 0) {
+  const releaseLines = await utils.readReleaseLinesAtCommit(octokit, options.targetSha)
+  let commitMessages = await utils.loadCommitMessagesFromFile(commitLogsFile, releaseLines)
+  if (!commitMessages || rules.generateReleaseNotes(commitMessages) === '') {
     // if the file does not exist or no commit messages found, load commit messages from GitHub repo
     core.info(`ℹ️ File ${commitLogsFile} does not exist or no commit messages found, loading commit messages from repo...`)
     core.info(`🕘 Fetching commits from branch <${options.branches}>...`)
-    commitMessages = await utils.loadCommitMessagesFromRepo(octokit, filterCommits, options.branches, options.scanPath)
+    commitMessages = await utils.loadCommitMessagesFromRepo(octokit, filterCommits, options.branches, options.scanPath, options.targetSha)
   }
 
   const msgsBumpMajor = []
@@ -116,18 +135,14 @@ async function computeReleaseMeta(octokit, options) {
     }
   }
 
-  const releaseOptions = await utils.getReleaseOptionsFromFile(commitLogsFile)
+  const releaseOptions = await utils.getReleaseOptionsFromFile(commitLogsFile, releaseLines)
   core.info(`ℹ️ releaseOptions: ${JSON.stringify(releaseOptions, null, 2)}`)
   if (releaseOptions.releaseVersion) {
     core.info(`✴️ Release version forced to ${releaseOptions.releaseVersion}.`)
-    const version = utils.parseSemver(releaseOptions.releaseVersion)
-    if (version) {
-      return {
-        release_version: version,
-        release_notes: rules.generateReleaseNotes(commitMessages),
-      }
+    return {
+      release_version: utils.normalizeReleaseVersion(releaseOptions.releaseVersion),
+      release_notes: rules.generateReleaseNotes(commitMessages),
     }
-    throw new Error(`Invalid version number: ${releaseOptions.releaseVersion}`)
   }
 
   const version = msgsBumpMajor.length > 0
@@ -143,7 +158,7 @@ async function computeReleaseMeta(octokit, options) {
     core.info(`📣 Bug fix/patch/improvement updates detected, releasing new PATCH version...`)
   }
   return {
-    release_version: version,
+    release_version: utils.normalizeReleaseVersion(version.semver),
     release_notes: rules.generateReleaseNotes(commitMessages),
   }
 }
@@ -164,6 +179,10 @@ async function semrelease() {
 
   // fetch options
   const options = utils.getOptions()
+  if (!options.targetSha) throw new Error('target-sha or github.context.sha is required')
+  const targetCommit = await utils.getCommit(octokit, options.targetSha)
+  if (!targetCommit) throw new Error(`Target commit ${options.targetSha} does not exist in this repository`)
+  options.targetSha = targetCommit.sha
   core.info(`ℹ️ options: ${JSON.stringify(options, null, 2)}`)
 
   // fetch release info
@@ -176,6 +195,7 @@ async function semrelease() {
 
   core.info(`ℹ️ Release version: ${releaseMeta.release_version.semver}`)
   const tagName = `${options.tagPrefix}${releaseMeta.release_version.semver}`
+  await verifyReleaseTag(octokit, tagName, options.targetSha)
   if (await utils.getReleaseByTag(octokit, tagName)) {
     core.info(`⚠️ Release ${tagName} already exists, skipped.`)
     RESULT_SKIPPED.reason = `Release ${tagName} already exists.`
@@ -183,12 +203,12 @@ async function semrelease() {
   }
 
   // create tags
-  await createTag(octokit, tagName, options.isDryRun)
+  await createTag(octokit, tagName, options.targetSha, options.isDryRun)
   if (options.isTagMajorRelease) {
-    await createTag(octokit, `${options.tagPrefix}${releaseMeta.release_version.major}`, options.isDryRun)
+    await createTag(octokit, `${options.tagPrefix}${releaseMeta.release_version.major}`, options.targetSha, options.isDryRun, true)
   }
   if (options.isTagMinorRelease) {
-    await createTag(octokit, `${options.tagPrefix}${releaseMeta.release_version.major}.${releaseMeta.release_version.minor}`, options.isDryRun)
+    await createTag(octokit, `${options.tagPrefix}${releaseMeta.release_version.major}.${releaseMeta.release_version.minor}`, options.targetSha, options.isDryRun, true)
   }
 
   // create release

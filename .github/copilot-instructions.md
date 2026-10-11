@@ -37,6 +37,7 @@ export GITHUB_REPOSITORY=btnguyen2k/action-semrelease
 - Input handling uses `core.getInput(name)` with defaults and supported environment fallbacks (`DRY_RUN`, `TAG_PREFIX`, `BRANCHES`, `TAG_ONLY`, `SCAN_PATH`). When adding an input, update `action.yml`, `getOptions()` and the README.
 - Dry-run is enabled by the `dry-run` input, `DRY_RUN=true`, or a `.semrelease-dry-run` file in the repo root. Every write to GitHub (tags, refs, releases) must go through the `dryRun` guard.
 - `.semrelease/this_release` can force a version with a `#!VERSION=x.y.z` line. The action never cleans this file up.
+- Release metadata reads `.semrelease/this_release` from GitHub at the resolved `target-sha` (default: event SHA). Commit scanning intersects pinned branch histories with the target's reachable history. Full version tags are verified/reused, never moved; enabled major/minor aliases remain movable. Partial custom versions are padded to valid SemVer or rejected.
 - Version calculation always uses `computeReleaseMeta`; changelog/release-notes documents are not parsed for release metadata.
 - Code style: no semicolons, single quotes, 2-space indent (see `eslint.config.mjs` and `.editorconfig`). Log messages are prefixed with emoji, e.g. `ℹ️`, `⚠️`, `✅`, `🕘`.
 - Release notes live in `RELEASE-NOTES.md`; the CI workflows (`.github/workflows/test.yaml`, `release.yaml`) run the action against itself in dry-run mode.

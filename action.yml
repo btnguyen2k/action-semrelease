@@ -12,6 +12,10 @@ inputs:
     description: 'Dry run flag'
     required: false
     default: 'false'
+  target-sha:
+    description: 'Commit SHA to release; defaults to the workflow event SHA'
+    required: false
+    default: ''
   tag-prefix:
     description: 'Tag prefix, e.g. v'
     required: false
