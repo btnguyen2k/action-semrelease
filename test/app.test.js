@@ -1,10 +1,10 @@
 import * as app from '../src/app.js'
 
 function setup() {
-  process.env['INPUT_dry-run'] = process.env['DRY_RUN'] = 'true'
-  process.env['INPUT_github-token'] = process.env['GITHUB_TOKEN'] || ''
-  process.env['INPUT_tag-prefix'] = process.env['TAG_PREFIX'] || 'v'
-  process.env['INPUT_auto-mode'] = process.env['AUTO_MODE'] = 'true'
+  process.env['INPUT_DRY-RUN'] = process.env['DRY_RUN'] = 'true'
+  process.env['INPUT_GITHUB-TOKEN'] = process.env['GITHUB_TOKEN'] || ''
+  process.env['INPUT_TAG-PREFIX'] = process.env['TAG_PREFIX'] || 'v'
+  process.env['INPUT_AUTO-MODE'] = process.env['AUTO_MODE'] = 'true'
   process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/action-semrelease-test'
 }
 
@@ -13,8 +13,8 @@ test('test dry-run/auto-skipped-empty', async() => {
   const save = process.cwd()
   try {
     // setup env for this test
-    process.env['INPUT_branches'] = process.env['BRANCHES'] = 'test-auto-skipped-empty'
-    process.env['INPUT_target-sha'] = 'af740f2b9f1856d99ef5a23d086fc6affd53324c'
+    process.env['INPUT_BRANCHES'] = process.env['BRANCHES'] = 'test-auto-skipped-empty'
+    process.env['INPUT_TARGET-SHA'] = 'af740f2b9f1856d99ef5a23d086fc6affd53324c'
 
     process.chdir('testdata/auto-skipped-empty-repo')
     const {result, reason} = await app.semrelease()
@@ -22,9 +22,9 @@ test('test dry-run/auto-skipped-empty', async() => {
     expect(reason).toBe('No release info found, or release notes are empty.')
   } finally {
     // unset env of this test
-    delete process.env['INPUT_branches']
+    delete process.env['INPUT_BRANCHES']
     delete process.env['BRANCHES']
-    delete process.env['INPUT_target-sha']
+    delete process.env['INPUT_TARGET-SHA']
 
     process.chdir(save)
   }
@@ -35,8 +35,8 @@ test('test dry-run/auto-branch-test-auto-v0.0.1', async() => {
   const save = process.cwd()
   try {
     // setup env for this test
-    process.env['INPUT_branches'] = process.env['BRANCHES'] = 'test-auto-v0.0.1'
-    process.env['INPUT_target-sha'] = 'b5610a3b1bbd1c178668e54cccef1130abf682c9'
+    process.env['INPUT_BRANCHES'] = process.env['BRANCHES'] = 'test-auto-v0.0.1'
+    process.env['INPUT_TARGET-SHA'] = 'b5610a3b1bbd1c178668e54cccef1130abf682c9'
 
     process.chdir('testdata/auto-branch-test-auto-v0.0.1')
     const {result, releaseVersion, releaseNotes} = await app.semrelease()
@@ -45,9 +45,9 @@ test('test dry-run/auto-branch-test-auto-v0.0.1', async() => {
     expect(releaseNotes).toBe('### Fixed/Improvements\n\n- Fixed a bug that caused random crash after login')
   } finally {
     // unset env of this test
-    delete process.env['INPUT_branches']
+    delete process.env['INPUT_BRANCHES']
     delete process.env['BRANCHES']
-    delete process.env['INPUT_target-sha']
+    delete process.env['INPUT_TARGET-SHA']
 
     process.chdir(save)
   }
@@ -58,8 +58,8 @@ test('test dry-run/auto-forced-version-v10.11.12', async() => {
   const save = process.cwd()
   try {
     // setup env for this test
-    process.env['INPUT_branches'] = process.env['BRANCHES'] = 'test-auto-forced-version-v10.11.12'
-    process.env['INPUT_target-sha'] = '0036c04655999dd616237e9fa393ce17755881af'
+    process.env['INPUT_BRANCHES'] = process.env['BRANCHES'] = 'test-auto-forced-version-v10.11.12'
+    process.env['INPUT_TARGET-SHA'] = '0036c04655999dd616237e9fa393ce17755881af'
 
     process.chdir('testdata/auto-forced-version-v10.11.12')
     const {result, releaseVersion, releaseNotes} = await app.semrelease()
@@ -68,9 +68,9 @@ test('test dry-run/auto-forced-version-v10.11.12', async() => {
     expect(releaseNotes).toBe('### Changes\n\n- BREAKING CHANGE: demo.\n\n### Added/Refactoring/Deprecation\n\n- New feature: dummy.')
   } finally {
     // unset env of this test
-    delete process.env['INPUT_branches']
+    delete process.env['INPUT_BRANCHES']
     delete process.env['BRANCHES']
-    delete process.env['INPUT_target-sha']
+    delete process.env['INPUT_TARGET-SHA']
 
     process.chdir(save)
   }
