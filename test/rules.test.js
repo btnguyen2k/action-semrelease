@@ -2,68 +2,38 @@ import * as rules from '../src/rules.js'
 import {jest} from '@jest/globals'
 
 describe('parseCommitMessages', () => {
-  test('none', () => {
-    const commitMessages = [
-      'No version bump',
-      'Because nothing changed',
-      'Or no commit messages that match the rules',
-    ]
-    const callbackBumpMajor = jest.fn()
-    const callbackBumpMinor = jest.fn()
-    const callbackBumpPatch = jest.fn()
-    rules.parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
-    expect(callbackBumpMajor).toHaveBeenCalledTimes(0)
-    expect(callbackBumpMinor).toHaveBeenCalledTimes(0)
-    expect(callbackBumpPatch).toHaveBeenCalledTimes(0)
-  })
+  const ignoredMessages = [
+    'No version bump',
+    'Because nothing changed',
+    'Or no commit messages that match the rules',
+  ]
+  const majorMessages = [
+    'chore(deps): bump libx from 1.0.0 to 2.0.0',
+    'Removed function `ValidateGitHubToken()`',
+    'Replaced function `ParseChangeLog()` with `ParseReleaseMeta()`',
+  ]
+  const minorMessages = [
+    'New feature: auto mode',
+    'chore(CI): cleanup tests',
+    'Added function `ParseReleaseMeta()`',
+  ]
+  const patchMessages = [
+    'Security: bump libsec to version x.y.z',
+    'Improved performance of `ParseReleaseMeta()`',
+    'Optimized package size',
+  ]
 
-  test('major only', () => {
-    const commitMessages = [
-      'chore(deps): bump libx from 1.0.0 to 2.0.0',
-      'Removed function `ValidateGitHubToken()`',
-      'Replaced function `ParseChangeLog()` with `ParseReleaseMeta()`',
-    ]
-    const callbackBumpMajor = jest.fn()
-    const callbackBumpMinor = jest.fn()
-    const callbackBumpPatch = jest.fn()
-    rules.parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
-    expect(callbackBumpMajor).toHaveBeenCalledTimes(2)
-    expect(callbackBumpMinor).toHaveBeenCalledTimes(0)
-    expect(callbackBumpPatch).toHaveBeenCalledTimes(0)
-  })
-
-  test('minor only', () => {
-    const commitMessages = [
-      'New feature: auto mode',
-      'chore(CI): cleanup tests',
-      'Added function `ParseReleaseMeta()`',
-    ]
-    const callbackBumpMajor = jest.fn()
-    const callbackBumpMinor = jest.fn()
-    const callbackBumpPatch = jest.fn()
-    rules.parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
-    expect(callbackBumpMajor).toHaveBeenCalledTimes(0)
-    expect(callbackBumpMinor).toHaveBeenCalledTimes(2)
-    expect(callbackBumpPatch).toHaveBeenCalledTimes(0)
-  })
-
-  test('patch only', () => {
-    const commitMessages = [
-      'Security: bump libsec to version x.y.z',
-      'Improved performance of `ParseReleaseMeta()`',
-      'Optimized package size',
-    ]
-    const callbackBumpMajor = jest.fn()
-    const callbackBumpMinor = jest.fn()
-    const callbackBumpPatch = jest.fn()
-    rules.parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
-    expect(callbackBumpMajor).toHaveBeenCalledTimes(0)
-    expect(callbackBumpMinor).toHaveBeenCalledTimes(0)
-    expect(callbackBumpPatch).toHaveBeenCalledTimes(3)
-  })
-
-  test('more patch messages', () => {
-    const commitMessages = [
+  test.each([
+    {name: 'empty messages', messages: [], major: 0, minor: 0, patch: 0},
+    {name: 'no recognized changes', messages: ignoredMessages, major: 0, minor: 0, patch: 0},
+    {name: 'major only', messages: majorMessages, major: 2, minor: 0, patch: 0},
+    {name: 'minor only', messages: minorMessages, major: 0, minor: 2, patch: 0},
+    {name: 'patch only', messages: patchMessages, major: 0, minor: 0, patch: 3},
+    {name: 'major + minor', messages: [...majorMessages, ...minorMessages], major: 2, minor: 2, patch: 0},
+    {name: 'major + patch', messages: [...majorMessages, ...patchMessages], major: 2, minor: 0, patch: 3},
+    {name: 'minor + patch', messages: [...minorMessages, ...patchMessages], major: 0, minor: 2, patch: 3},
+    {name: 'major + minor + patch', messages: [...majorMessages, ...minorMessages, ...patchMessages], major: 2, minor: 2, patch: 3},
+    {name: 'patch syntax variants and ignored messages', messages: [
       'Fixing incident #123',
       '+ [FIXED] - Issue #123',
       '- (fixes): bug #456',
@@ -78,35 +48,15 @@ describe('parseCommitMessages', () => {
       '> patched(API): authorization with JWT',
       '- [dep] Update dependencies.',
       '[patch] Update Azure locations and product categories',
-    ]
+    ], major: 0, minor: 0, patch: 12},
+  ])('$name', ({messages, major, minor, patch}) => {
     const callbackBumpMajor = jest.fn()
     const callbackBumpMinor = jest.fn()
     const callbackBumpPatch = jest.fn()
-    rules.parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
-    expect(callbackBumpMajor).toHaveBeenCalledTimes(0)
-    expect(callbackBumpMinor).toHaveBeenCalledTimes(0)
-    expect(callbackBumpPatch).toHaveBeenCalledTimes(12)
-  })
-
-  test('all', () => {
-    const commitMessages = [
-      'chore(deps): bump libx from 1.0.0 to 2.0.0',
-      'Removed function `ValidateGitHubToken()`',
-      'Replaced function `ParseChangeLog()` with `ParseReleaseMeta()`',
-      'New feature: auto mode',
-      'chore(CI): cleanup tests',
-      'Added function `ParseReleaseMeta()`',
-      'Security: bump libsec to version x.y.z',
-      'Improved performance of `ParseReleaseMeta()`',
-      'Optimized package size',
-    ]
-    const callbackBumpMajor = jest.fn()
-    const callbackBumpMinor = jest.fn()
-    const callbackBumpPatch = jest.fn()
-    rules.parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
-    expect(callbackBumpMajor).toHaveBeenCalledTimes(2)
-    expect(callbackBumpMinor).toHaveBeenCalledTimes(2)
-    expect(callbackBumpPatch).toHaveBeenCalledTimes(3)
+    rules.parseCommitMessages(messages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch)
+    expect(callbackBumpMajor).toHaveBeenCalledTimes(major)
+    expect(callbackBumpMinor).toHaveBeenCalledTimes(minor)
+    expect(callbackBumpPatch).toHaveBeenCalledTimes(patch)
   })
 })
 

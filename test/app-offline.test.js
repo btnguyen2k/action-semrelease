@@ -3,6 +3,8 @@ import {jest} from '@jest/globals'
 const context = {repo: {owner: 'owner', repo: 'repo'}, sha: 'event-sha'}
 const inputs = {}
 let octokit
+let savedGithubToken
+const getOctokit = jest.fn(() => octokit)
 
 jest.unstable_mockModule('@actions/core', () => ({
   getInput: name => inputs[name] || '',
@@ -11,7 +13,7 @@ jest.unstable_mockModule('@actions/core', () => ({
 }))
 jest.unstable_mockModule('@actions/github', () => ({
   context,
-  getOctokit: () => octokit,
+  getOctokit,
 }))
 
 const {semrelease} = await import('../src/app.js')
@@ -32,6 +34,9 @@ function assertNoWrites() {
 }
 
 beforeEach(() => {
+  savedGithubToken = process.env.GITHUB_TOKEN
+  delete process.env.GITHUB_TOKEN
+  getOctokit.mockClear()
   for (const key of Object.keys(inputs)) delete inputs[key]
   Object.assign(inputs, {
     'github-token': 'offline-token',
@@ -69,6 +74,30 @@ beforeEach(() => {
   }
 })
 
+test('AUTH-01: missing token fails before client creation or API calls', async() => {
+  delete inputs['github-token']
+  await expect(semrelease()).rejects.toThrow('github-token is required')
+  expect(getOctokit).not.toHaveBeenCalled()
+  for (const methods of Object.values(octokit.rest)) {
+    for (const method of Object.values(methods)) expect(method).not.toHaveBeenCalled()
+  }
+})
+
+test('AUTH-02: input token takes precedence over environment token', async() => {
+  process.env.GITHUB_TOKEN = 'environment-token'
+  await semrelease()
+  expect(getOctokit).toHaveBeenCalledTimes(1)
+  expect(getOctokit).toHaveBeenCalledWith('offline-token')
+})
+
+test('AUTH-02: environment token is used when input is absent', async() => {
+  delete inputs['github-token']
+  process.env.GITHUB_TOKEN = 'environment-token'
+  await semrelease()
+  expect(getOctokit).toHaveBeenCalledTimes(1)
+  expect(getOctokit).toHaveBeenCalledWith('environment-token')
+})
+
 test('creates the exact tag at the resolved target without deleting refs', async() => {
   const result = await semrelease()
   expect(result).toMatchObject({result: 'SUCCESS', releaseVersion: '1.2.3'})
@@ -100,6 +129,22 @@ test('missing target fails before mutation', async() => {
 test('unknown target fails before mutation', async() => {
   octokit.rest.git.getCommit.mockRejectedValue(apiError(404))
   await expect(semrelease()).rejects.toThrow('does not exist in this repository')
+  assertNoWrites()
+})
+
+test.each([403, 500])('TARGET-01: target lookup HTTP %s stops before metadata or mutations', async status => {
+  const error = apiError(status)
+  octokit.rest.git.getCommit.mockRejectedValue(error)
+  await expect(semrelease()).rejects.toBe(error)
+  expect(octokit.rest.git.getCommit).toHaveBeenCalledTimes(1)
+  expect(octokit.rest.git.getCommit).toHaveBeenCalledWith({
+    owner: 'owner', repo: 'repo', commit_sha: 'target',
+  })
+  for (const method of Object.values(octokit.rest.repos)) {
+    expect(method).not.toHaveBeenCalled()
+  }
+  expect(octokit.rest.git.getRef).not.toHaveBeenCalled()
+  expect(octokit.rest.git.getTag).not.toHaveBeenCalled()
   assertNoWrites()
 })
 
@@ -194,6 +239,58 @@ test('invalid forced version fails before writing tags', async() => {
   assertNoWrites()
 })
 
+describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from %s', source => {
+  const major = 'Breaking change: remove legacy API'
+  const minor = 'Added new API'
+  const patch = 'Fix: incorrect API response'
+
+  test.each([
+    {name: 'major only', messages: [major], version: '3.0.0'},
+    {name: 'minor only', messages: [minor], version: '2.4.0'},
+    {name: 'patch only', messages: [patch], version: '2.3.5'},
+    {name: 'major + minor', messages: [minor, major], version: '3.0.0'},
+    {name: 'major + patch', messages: [patch, major], version: '3.0.0'},
+    {name: 'minor + patch', messages: [patch, minor], version: '2.4.0'},
+    {name: 'major + minor + patch', messages: [patch, minor, major], version: '3.0.0'},
+  ])('$name bumps 2.3.4 to $version', async({messages, version}) => {
+    octokit.rest.repos.listReleases.mockResolvedValue({data: [
+      {tag_name: 'v2.3.4', created_at: '2026-01-01T00:00:00Z'},
+    ]})
+    if (source === 'pinned file') {
+      octokit.rest.repos.getContent.mockResolvedValue(fileResponse(messages.join('\n')))
+    } else {
+      octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+      octokit.rest.repos.listCommits.mockResolvedValue({data: messages.map((message, index) => ({
+        sha: index === 0 ? 'target' : `ancestor-${index}`,
+        commit: {message},
+      }))})
+    }
+
+    const result = await semrelease()
+    expect(result).toMatchObject({result: 'SUCCESS', releaseVersion: version})
+    expect(result.releaseNotes).not.toBe('')
+    expect(octokit.rest.git.createTag).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.git.createTag).toHaveBeenCalledWith(expect.objectContaining({
+      tag: `v${version}`, object: 'target',
+    }))
+    expect(octokit.rest.git.createRef).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.git.createRef).toHaveBeenCalledWith(expect.objectContaining({
+      ref: `refs/tags/v${version}`, sha: 'tag-object',
+    }))
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith(expect.objectContaining({
+      tag_name: `v${version}`, body: result.releaseNotes,
+    }))
+    if (source === 'pinned file') {
+      expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    } else {
+      expect(octokit.rest.repos.listCommits).toHaveBeenCalledWith(expect.objectContaining({
+        sha: 'target', since: '2026-01-01T00:00:00Z',
+      }))
+    }
+  })
+})
+
 test.each(['', '# comment', 'unrecognized message', '#!VERSION=4.1'])(
   'falls back to pinned history when file yields no notes: %s', async text => {
     octokit.rest.repos.getContent.mockResolvedValue(fileResponse(text))
@@ -226,5 +323,7 @@ test('release publication failure propagates without undoing the exact tag', asy
 })
 
 afterEach(() => {
+  if (savedGithubToken === undefined) delete process.env.GITHUB_TOKEN
+  else process.env.GITHUB_TOKEN = savedGithubToken
   jest.restoreAllMocks()
 })
