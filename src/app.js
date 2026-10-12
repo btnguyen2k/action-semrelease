@@ -109,7 +109,7 @@ async function computeReleaseMeta(octokit, options) {
     // if the file does not exist or no commit messages found, load commit messages from GitHub repo
     core.info(`ℹ️ File ${commitLogsFile} does not exist or no commit messages found, loading commit messages from repo...`)
     core.info(`🕘 Fetching commits from branch <${options.branches}>...`)
-    commitMessages = await utils.loadCommitMessagesFromRepo(octokit, filterCommits, options.branches, options.scanPath, options.targetSha)
+    commitMessages = await utils.loadCommitMessagesFromRepo(octokit, filterCommits, options.branches, options.scanPath, options.targetSha, options.branchTips)
   }
 
   const msgsBumpMajor = []
@@ -183,6 +183,7 @@ async function semrelease() {
   const targetCommit = await utils.getCommit(octokit, options.targetSha)
   if (!targetCommit) throw new Error(`Target commit ${options.targetSha} does not exist in this repository`)
   options.targetSha = targetCommit.sha
+  options.branchTips = await utils.validateReleaseBranches(octokit, options.branches, options.targetSha)
   core.info(`ℹ️ options: ${JSON.stringify(options, null, 2)}`)
 
   // fetch release info

@@ -10,3 +10,7 @@
 - build(deps): upgrade @actions/core to 3.0.1
 - build(deps): upgrade @actions/github to 9.1.1
 - BREAKING CHANGE: remove deprecated release metadata inputs
+- feat(release): pin metadata and tags to the target commit
+- feat(release): accept partial forced versions
+- fix(release): keep full-version tags immutable
+- BREAKING CHANGE: require targets to be reachable from a configured branch

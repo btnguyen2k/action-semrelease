@@ -197,14 +197,15 @@ describe('pinned commit history', () => {
     ])
   })
 
-  test('skips a missing branch when lookup returns 404', async() => {
+  test.each([404, 422])('fails when the only branch lookup returns HTTP %s', async status => {
     const octokit = makeOctokit()
     octokit.rest.repos.listCommits.mockResolvedValue({data: []})
-    octokit.rest.repos.getCommit.mockRejectedValue(apiError(404))
-    expect(await utils.loadCommitMessagesFromRepo(octokit, {}, ['missing'], '', 'target')).toEqual([])
+    octokit.rest.repos.getCommit.mockRejectedValue(apiError(status))
+    await expect(utils.loadCommitMessagesFromRepo(octokit, {}, ['missing'], '', 'target'))
+      .rejects.toThrow('None of the configured branches exist')
   })
 
-  test.each([403, 422, 500])('propagates branch lookup HTTP %s', async status => {
+  test.each([403, 500])('propagates branch lookup HTTP %s', async status => {
     const octokit = makeOctokit()
     const error = apiError(status)
     octokit.rest.repos.listCommits.mockResolvedValue({data: []})

@@ -2,6 +2,7 @@ export {
   getOptions,
   loadCommitMessagesFromFile,
   loadCommitMessagesFromRepo,
+  validateReleaseBranches,
   getReleaseOptionsFromFile,
   readReleaseLinesAtCommit,
   resolveTagCommit,
@@ -56,29 +57,51 @@ async function loadCommitMessagesFromFile(commitLogsFile, lines) {
  * @param scanPath
  * @returns {Promise<string[]>}
  */
-async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath, targetSha) {
+async function resolveBranchTips(octokit, branches) {
+  if (branches.length === 0) throw new Error('At least one branch is required')
+  const tips = []
+  for (const branch of new Set(branches)) {
+    try {
+      const {data: tip} = await octokit.rest.repos.getCommit({
+        owner: github.context.repo.owner,
+        repo: github.context.repo.repo,
+        ref: branch,
+      })
+      tips.push(tip.sha)
+    } catch (error) {
+      if (error.status !== 404 && error.status !== 422) throw error
+      core.warning(`Branch ${branch} does not exist (HTTP ${error.status}); skipping it.`)
+    }
+  }
+  if (tips.length === 0) throw new Error('None of the configured branches exist')
+  return tips
+}
+
+async function validateReleaseBranches(octokit, branches, targetSha) {
+  const tips = await resolveBranchTips(octokit, branches)
+  for (const sha of tips) {
+    if (sha === targetSha) return tips
+    const {data: comparison} = await octokit.rest.repos.compareCommits({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      base: targetSha,
+      head: sha,
+    })
+    if (comparison.status === 'ahead' || comparison.status === 'identical') return tips
+  }
+  throw new Error(`Target commit ${targetSha} is not reachable from any configured branch`)
+}
+
+async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath, targetSha, branchTips) {
   const commitMessages = []
+  const tips = targetSha ? branchTips ?? await resolveBranchTips(octokit, branches) : branches
   let reachable
   if (targetSha) {
     const params = {...filterCommits, sha: targetSha}
     if (scanPath) params.path = scanPath
     reachable = new Set((await getAllCommits(octokit, params)).map(commit => commit.sha))
   }
-  for (const branch of branches) {
-    let sha = branch
-    if (targetSha) {
-      try {
-        const {data: tip} = await octokit.rest.repos.getCommit({
-          owner: github.context.repo.owner,
-          repo: github.context.repo.repo,
-          ref: branch,
-        })
-        sha = tip.sha
-      } catch (error) {
-        if (error.status !== 404) throw error
-        continue
-      }
-    }
+  for (const sha of tips) {
     const params = {...filterCommits, sha}
     if (scanPath) {
       params.path = scanPath

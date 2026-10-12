@@ -13,7 +13,7 @@ inputs:
     required: false
     default: 'false'
   target-sha:
-    description: 'Commit SHA to release; defaults to the workflow event SHA'
+    description: 'Commit SHA to release; defaults to the workflow event SHA and must be reachable from a configured branch'
     required: false
     default: ''
   tag-prefix:
@@ -29,7 +29,7 @@ inputs:
     required: false
     default: 'false'
   branches:
-    description: 'Branches to fetch commit messages for release notes'
+    description: 'Branches to validate the target and fetch commit messages; at least one must exist'
     required: false
     default: 'main,master'
   path:

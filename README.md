@@ -191,7 +191,11 @@ This Action outputs the following:
 ## Customizing Version Numbers and Commit Messages
 
 The action reads `.semrelease/this_release` from GitHub at `target-sha` (or the workflow event SHA), not from uncommitted workspace changes.
-If the file yields no recognized release notes, it falls back to commit logs. Branch tips are resolved once per scan, and only commits reachable from the target commit are included, with the existing branch and path filters.
+Before reading release metadata, the action resolves configured branch tips once and requires the target commit (including the default event SHA) to be reachable from at least one of them. The target may be a branch tip or an ancestor; sharing an ancestor is not sufficient. Duplicate branch names are resolved only once. Branch lookups returning HTTP 404 or 422 produce a warning and are skipped; an empty branch list or no existing branches causes failure. Other lookup errors and comparison errors propagate.
+
+Branch validation also applies when the metadata file supplies the version and release notes, and is independent of date/path filters. A pull-request merge SHA not reachable from a configured branch fails validation; use a reachable `target-sha` and appropriate `branches` instead.
+
+If the file yields no recognized release notes, the action falls back to commit logs using the same pinned branch tips. Only commits reachable from both the target and configured branches are included, with the existing date and path filters. Valid branches and target with no qualifying messages still produce a skipped result.
 Custom versions such as `4` and `4.1` are normalized to `4.0.0` and `4.1.0`; versions that cannot be normalized to valid Semantic Versioning cause an error.
 
 Full version tags are immutable: an existing tag at the target commit is reused, and a tag at another commit causes an error, even if its release already exists.

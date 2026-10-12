@@ -5,11 +5,12 @@ const inputs = {}
 let octokit
 let savedGithubToken
 const getOctokit = jest.fn(() => octokit)
+const warning = jest.fn()
 
 jest.unstable_mockModule('@actions/core', () => ({
   getInput: name => inputs[name] || '',
   info: jest.fn(),
-  warning: jest.fn(),
+  warning,
 }))
 jest.unstable_mockModule('@actions/github', () => ({
   context,
@@ -37,6 +38,7 @@ beforeEach(() => {
   savedGithubToken = process.env.GITHUB_TOKEN
   delete process.env.GITHUB_TOKEN
   getOctokit.mockClear()
+  warning.mockClear()
   for (const key of Object.keys(inputs)) delete inputs[key]
   Object.assign(inputs, {
     'github-token': 'offline-token',
@@ -66,6 +68,7 @@ beforeEach(() => {
         getReleaseByTag: jest.fn().mockRejectedValue(apiError(404)),
         createRelease: jest.fn().mockResolvedValue({data: {id: 1}}),
         getCommit: jest.fn().mockResolvedValue({data: {sha: 'branch-tip'}}),
+        compareCommits: jest.fn().mockResolvedValue({data: {status: 'ahead'}}),
         listCommits: jest.fn().mockResolvedValue({data: [
           {sha: 'target', commit: {message: 'fix: from history'}},
         ]}),
@@ -146,6 +149,126 @@ test.each([403, 500])('TARGET-01: target lookup HTTP %s stops before metadata or
   expect(octokit.rest.git.getRef).not.toHaveBeenCalled()
   expect(octokit.rest.git.getTag).not.toHaveBeenCalled()
   assertNoWrites()
+})
+
+describe('HIST-01: configured branch validation', () => {
+  test.each([404, 422])('default missing master HTTP %s warns and releases from main', async status => {
+    delete inputs.branches
+    octokit.rest.repos.getCommit.mockImplementation(async({ref}) => {
+      if (ref === 'master') throw apiError(status)
+      return {data: {sha: 'branch-tip'}}
+    })
+    expect((await semrelease()).result).toBe('SUCCESS')
+    expect(octokit.rest.repos.getCommit.mock.calls.map(([params]) => params.ref)).toEqual(['main', 'master'])
+    expect(warning).toHaveBeenCalledWith(`Branch master does not exist (HTTP ${status}); skipping it.`)
+  })
+
+  test('all missing branches fail before reading metadata or writing', async() => {
+    inputs.branches = 'missing404,missing422'
+    octokit.rest.repos.getCommit.mockImplementation(async({ref}) => {
+      throw apiError(ref === 'missing404' ? 404 : 422)
+    })
+    await expect(semrelease()).rejects.toThrow('None of the configured branches exist')
+    expect(warning).toHaveBeenCalledTimes(2)
+    expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.listReleases).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.compareCommits).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test('empty branch list fails before metadata or writes', async() => {
+    inputs.branches = ', ; '
+    await expect(semrelease()).rejects.toThrow('At least one branch is required')
+    expect(octokit.rest.repos.getCommit).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test.each([403, 500])('branch lookup HTTP %s propagates without warning or writes', async status => {
+    const error = apiError(status)
+    octokit.rest.repos.getCommit.mockRejectedValue(error)
+    await expect(semrelease()).rejects.toBe(error)
+    expect(warning).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+})
+
+describe('HIST-02: target membership in pinned branches', () => {
+  test('target equal to branch tip succeeds without comparison', async() => {
+    octokit.rest.repos.getCommit.mockResolvedValue({data: {sha: 'target'}})
+    expect((await semrelease()).result).toBe('SUCCESS')
+    expect(octokit.rest.repos.compareCommits).not.toHaveBeenCalled()
+  })
+
+  test.each(['ahead', 'identical'])('comparison status %s accepts target membership', async status => {
+    inputs.path = 'src'
+    octokit.rest.repos.compareCommits.mockResolvedValue({data: {status}})
+    expect((await semrelease()).result).toBe('SUCCESS')
+    expect(octokit.rest.repos.compareCommits).toHaveBeenCalledWith({
+      owner: 'owner', repo: 'repo', base: 'target', head: 'branch-tip',
+    })
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+  })
+
+  test.each(['behind', 'diverged'])('comparison status %s fails despite usable metadata file', async status => {
+    octokit.rest.repos.compareCommits.mockResolvedValue({data: {status}})
+    await expect(semrelease()).rejects.toThrow('Target commit target is not reachable from any configured branch')
+    expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.listReleases).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test('event SHA is subject to the same membership validation', async() => {
+    delete inputs['target-sha']
+    octokit.rest.repos.compareCommits.mockResolvedValue({data: {status: 'diverged'}})
+    await expect(semrelease()).rejects.toThrow('not reachable from any configured branch')
+    expect(octokit.rest.git.getCommit).toHaveBeenCalledWith(expect.objectContaining({commit_sha: 'event-sha'}))
+    assertNoWrites()
+  })
+
+  test.each([404, 422, 403, 500])('comparison HTTP %s propagates, not treated as missing branch', async status => {
+    const error = apiError(status)
+    octokit.rest.repos.compareCommits.mockRejectedValue(error)
+    await expect(semrelease()).rejects.toBe(error)
+    expect(warning).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test('accepts membership in a later branch and reuses deduplicated pinned tips for filtered history', async() => {
+    inputs.branches = 'main,dev,main'
+    inputs.path = 'src'
+    octokit.rest.repos.getCommit.mockImplementation(async({ref}) => ({data: {sha: `${ref}-tip`}}))
+    octokit.rest.repos.compareCommits.mockImplementation(async({head}) => ({
+      data: {status: head === 'main-tip' ? 'diverged' : 'ahead'},
+    }))
+    octokit.rest.repos.getContent.mockImplementation(async() => {
+      octokit.rest.repos.getCommit.mockResolvedValue({data: {sha: 'force-pushed-tip'}})
+      throw apiError(404)
+    })
+    octokit.rest.repos.listReleases.mockResolvedValue({data: [
+      {tag_name: 'v2.3.4', created_at: '2026-01-01T00:00:00Z'},
+    ]})
+    octokit.rest.repos.listCommits.mockImplementation(async({sha}) => ({
+      data: sha === 'main-tip'
+        ? [{sha: 'unreachable', commit: {message: 'Breaking change: unrelated'}}]
+        : [{sha: 'target', commit: {message: 'Fix: target change'}}],
+    }))
+
+    expect((await semrelease()).releaseVersion).toBe('2.3.5')
+    expect(octokit.rest.repos.getCommit.mock.calls.map(([params]) => params.ref)).toEqual(['main', 'dev'])
+    expect(octokit.rest.repos.compareCommits.mock.calls.map(([params]) => params)).toEqual([
+      {owner: 'owner', repo: 'repo', base: 'target', head: 'main-tip'},
+      {owner: 'owner', repo: 'repo', base: 'target', head: 'dev-tip'},
+    ])
+    expect(octokit.rest.repos.listCommits.mock.calls.map(([params]) => params.sha)).toEqual([
+      'target', 'main-tip', 'dev-tip',
+    ])
+    for (const [params] of octokit.rest.repos.listCommits.mock.calls) {
+      expect(params).toMatchObject({path: 'src', since: '2026-01-01T00:00:00Z'})
+    }
+  })
 })
 
 test('reuses an existing matching tag without recreating it', async() => {
@@ -301,10 +424,11 @@ test.each(['', '# comment', 'unrecognized message', '#!VERSION=4.1'])(
   },
 )
 
-test('recognized file messages bypass history scanning', async() => {
+test('recognized file messages bypass history scanning but still validate branches', async() => {
   await semrelease()
   expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
-  expect(octokit.rest.repos.getCommit).not.toHaveBeenCalled()
+  expect(octokit.rest.repos.getCommit).toHaveBeenCalledTimes(1)
+  expect(octokit.rest.repos.compareCommits).toHaveBeenCalledTimes(1)
 })
 
 test('empty history skips without mutations', async() => {
