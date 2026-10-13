@@ -271,6 +271,84 @@ describe('HIST-02: target membership in pinned branches', () => {
   })
 })
 
+describe('release baseline selection', () => {
+  test.each([
+    {id: 'BASE-01', source: 'release', since: '2026-01-02T00:00:00Z'},
+    {id: 'BASE-02', source: 'tag', since: '2026-01-01T00:00:00Z'},
+  ])('$id: uses the $source version and date for history fallback', async({source, since}) => {
+    octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+    octokit.rest.repos.listTags.mockResolvedValue({data: [
+      {name: source === 'release' ? 'v9.0.0' : 'v2.3.4', commit: {sha: 'baseline'}},
+    ]})
+    if (source === 'release') {
+      octokit.rest.repos.listReleases.mockResolvedValue({data: [
+        {tag_name: 'v2.3.4', created_at: since},
+      ]})
+    } else {
+      octokit.rest.git.getCommit.mockImplementation(async({commit_sha}) => ({
+        data: commit_sha === 'baseline'
+          ? {sha: 'baseline', committer: {date: since}}
+          : {sha: 'target'},
+      }))
+    }
+
+    const result = await semrelease()
+
+    expect(result).toEqual({
+      result: 'SUCCESS',
+      releaseVersion: '2.3.5',
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: from history',
+    })
+    expect(octokit.rest.repos.listCommits.mock.calls.map(([params]) => ({
+      sha: params.sha, since: params.since,
+    }))).toEqual([
+      {sha: 'target', since},
+      {sha: 'branch-tip', since},
+    ])
+    expect(octokit.rest.git.createTag).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.git.createTag).toHaveBeenCalledWith(expect.objectContaining({
+      tag: 'v2.3.5', object: 'target',
+    }))
+    expect(octokit.rest.git.createRef).toHaveBeenCalledWith(expect.objectContaining({
+      ref: 'refs/tags/v2.3.5', sha: 'tag-object',
+    }))
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith(expect.objectContaining({
+      tag_name: 'v2.3.5', body: result.releaseNotes,
+    }))
+    if (source === 'release') {
+      expect(octokit.rest.repos.listTags).not.toHaveBeenCalled()
+      expect(octokit.rest.git.getCommit.mock.calls.map(([params]) => params.commit_sha)).toEqual(['target'])
+    } else {
+      expect(octokit.rest.repos.listTags).toHaveBeenCalledTimes(1)
+      expect(octokit.rest.git.getCommit.mock.calls.map(([params]) => params.commit_sha)).toEqual(['target', 'baseline'])
+    }
+  })
+
+  test('BASE-03: missing tag baseline commit fails explicitly before metadata or writes', async() => {
+    octokit.rest.repos.listTags.mockResolvedValue({data: [
+      {name: 'v2.3.4', commit: {sha: 'missing-baseline'}},
+    ]})
+    octokit.rest.git.getCommit.mockImplementation(async({commit_sha}) => {
+      if (commit_sha === 'missing-baseline') throw apiError(404)
+      return {data: {sha: 'target'}}
+    })
+
+    await expect(semrelease()).rejects.toThrow(
+      'Baseline commit missing-baseline for tag v2.3.4 does not exist in this repository',
+    )
+
+    expect(octokit.rest.repos.compareCommits).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.git.getCommit.mock.calls.map(([params]) => params.commit_sha)).toEqual([
+      'target', 'missing-baseline',
+    ])
+    expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    expect(octokit.rest.git.getRef).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.getReleaseByTag).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+})
+
 test('reuses an existing matching tag without recreating it', async() => {
   octokit.rest.git.getRef.mockResolvedValue({data: {object: {type: 'commit', sha: 'target'}}})
   expect((await semrelease()).result).toBe('SUCCESS')

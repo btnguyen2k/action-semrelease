@@ -49,6 +49,8 @@ jobs:
 
 This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. The following screenshot illustrates the result:
 
+The version baseline comes from the latest matching GitHub release, falling back to a matching tag, then `0.0.0`. History scanning starts at the release creation date or the tag commit's committer date. A missing tag baseline commit causes an explicit failure.
+
 ![Releases and Tags](docs/semrelease-releases-and-tags.png)
 
 > The version number follows [semantic versioning](https://semver.org/spec/v2.0.0.html) conventions. The tag name can have an optional prefix, for example `v` (e.g. `v1.2.3`).

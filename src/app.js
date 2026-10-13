@@ -91,6 +91,9 @@ async function computeReleaseMeta(octokit, options) {
     if (latestTag) {
       lastVersion = utils.parseSemver(latestTag.name.slice(options.tagPrefix.length))
       const commit = await utils.getCommit(octokit, latestTag.commit.sha)
+      if (!commit) {
+        throw new Error(`Baseline commit ${latestTag.commit.sha} for tag ${latestTag.name} does not exist in this repository`)
+      }
       filterCommits.since = commit.committer.date
       core.info(`ℹ️ Found latest tag <${latestTag.name}> at <${commit.committer.date}>`)
     } else {
