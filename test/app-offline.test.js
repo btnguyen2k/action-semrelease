@@ -400,6 +400,38 @@ test('unexpected ref creation error propagates', async() => {
   expect(octokit.rest.repos.createRelease).not.toHaveBeenCalled()
 })
 
+test.each([
+  {failedTag: 'v1.2.3', attempted: ['v1.2.3'], createdRefs: [], deletedRefs: []},
+  {failedTag: 'v1', attempted: ['v1.2.3', 'v1'], createdRefs: ['refs/tags/v1.2.3'], deletedRefs: []},
+  {
+    failedTag: 'v1.2',
+    attempted: ['v1.2.3', 'v1', 'v1.2'],
+    createdRefs: ['refs/tags/v1.2.3', 'refs/tags/v1'],
+    deletedRefs: ['tags/v1'],
+  },
+])('TAG-03: tag-object failure for $failedTag stops downstream writes', async({
+  failedTag, attempted, createdRefs, deletedRefs,
+}) => {
+  inputs['tag-major-release'] = 'true'
+  inputs['tag-minor-release'] = 'true'
+  const error = apiError(500)
+  octokit.rest.git.createTag.mockImplementation(async({tag}) => {
+    if (tag === failedTag) throw error
+    return {data: {sha: `object-${tag}`}}
+  })
+
+  await expect(semrelease()).rejects.toBe(error)
+
+  expect(octokit.rest.git.createTag.mock.calls.map(([params]) => params.tag)).toEqual(attempted)
+  expect(octokit.rest.git.createRef.mock.calls.map(([params]) => ({
+    ref: params.ref, sha: params.sha,
+  }))).toEqual(createdRefs.map(ref => ({
+    ref, sha: `object-${ref.slice('refs/tags/'.length)}`,
+  })))
+  expect(octokit.rest.git.deleteRef.mock.calls.map(([params]) => params.ref)).toEqual(deletedRefs)
+  expect(octokit.rest.repos.createRelease).not.toHaveBeenCalled()
+})
+
 test('enabled aliases are recreated separately from the exact tag', async() => {
   inputs['tag-major-release'] = 'true'
   inputs['tag-minor-release'] = 'true'
