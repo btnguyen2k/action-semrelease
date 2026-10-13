@@ -51,6 +51,8 @@ This Action analyzes commit messages to determine if a new release is needed, an
 
 The version baseline comes from the latest matching GitHub release, falling back to a matching tag, then `0.0.0`. History scanning starts at the release creation date or the tag commit's committer date. A missing tag baseline commit causes an explicit failure.
 
+Any commit-history API error on page 2 or later fails the run rather than using partial history. A successful empty page completes pagination normally; a first-page 404 retains the empty-result behavior.
+
 ![Releases and Tags](docs/semrelease-releases-and-tags.png)
 
 > The version number follows [semantic versioning](https://semver.org/spec/v2.0.0.html) conventions. The tag name can have an optional prefix, for example `v` (e.g. `v1.2.3`).

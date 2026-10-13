@@ -296,6 +296,7 @@ async function getAllCommits(octokit, overrideParams) {
       params.page++
     }
   } catch (error) {
+    if (params.page > 1) throw error
     if (error.status !== 404) {
       throw error
     }

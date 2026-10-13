@@ -154,6 +154,54 @@ describe('resolveTagCommit', () => {
   })
 })
 
+describe('PAGE-01: commit pagination errors', () => {
+  const fullPage = Array.from({length: 100}, (_, index) => ({
+    sha: `commit-${index}`, commit: {message: `fix: ${index}`},
+  }))
+
+  describe.each([2, 3, 4])('failure on page %s', failedPage => {
+    test.each([404, 403, 422, 429, 500, undefined])('propagates error with status %s', async status => {
+      const octokit = makeOctokit()
+      const error = status === undefined ? new Error('Network failure') : apiError(status)
+      const requests = []
+      octokit.rest.repos.listCommits.mockImplementation(async({page}) => {
+        requests.push(page)
+        if (page === failedPage) throw error
+        return {data: fullPage}
+      })
+
+      await expect(utils.getAllCommits(octokit, {sha: 'target'})).rejects.toBe(error)
+      expect(requests).toEqual(Array.from({length: failedPage}, (_, index) => index + 1))
+    })
+  })
+
+  test('exactly 100 commits completes with an empty successful second page', async() => {
+    const octokit = makeOctokit()
+    const requests = []
+    octokit.rest.repos.listCommits.mockImplementation(async({page}) => {
+      requests.push(page)
+      return {data: page === 1 ? fullPage : []}
+    })
+    expect(await utils.getAllCommits(octokit)).toEqual(fullPage)
+    expect(requests).toEqual([1, 2])
+  })
+
+  test('first-page 404 retains the existing empty-result behavior', async() => {
+    const octokit = makeOctokit()
+    octokit.rest.repos.listCommits.mockRejectedValue(apiError(404))
+    expect(await utils.getAllCommits(octokit)).toEqual([])
+    expect(octokit.rest.repos.listCommits).toHaveBeenCalledTimes(1)
+  })
+
+  test('404 fails even when the requested starting page is 2', async() => {
+    const octokit = makeOctokit()
+    const error = apiError(404)
+    octokit.rest.repos.listCommits.mockRejectedValue(error)
+    await expect(utils.getAllCommits(octokit, {page: 2})).rejects.toBe(error)
+    expect(octokit.rest.repos.listCommits).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('pinned commit history', () => {
   function commit(sha, message) {
     return {sha, commit: {message}}

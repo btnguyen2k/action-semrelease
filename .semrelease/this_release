@@ -15,3 +15,4 @@
 - fix(release): keep full-version tags immutable
 - BREAKING CHANGE: require targets to be reachable from a configured branch
 - fix(release): identify missing baseline commits and their tags
+- fix(release): fail on commit-history errors after the first page

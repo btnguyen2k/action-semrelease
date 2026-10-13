@@ -548,6 +548,29 @@ test('empty history skips without mutations', async() => {
   assertNoWrites()
 })
 
+test.each(['target', 'branch-tip'])('PAGE-01: later-page failure scanning %s stops publication', async failedSha => {
+  octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+  const error = apiError(404)
+  const fullPage = Array.from({length: 100}, (_, index) => ({
+    sha: `commit-${index}`, commit: {message: `fix: issue ${index}`},
+  }))
+  const requests = []
+  octokit.rest.repos.listCommits.mockImplementation(async({sha, page}) => {
+    requests.push([sha, page])
+    if (sha === failedSha && page === 2) throw error
+    return {data: page === 1 ? fullPage : []}
+  })
+
+  await expect(semrelease()).rejects.toBe(error)
+
+  expect(requests).toEqual(failedSha === 'target'
+    ? [['target', 1], ['target', 2]]
+    : [['target', 1], ['target', 2], ['branch-tip', 1], ['branch-tip', 2]])
+  expect(octokit.rest.git.getRef).not.toHaveBeenCalled()
+  expect(octokit.rest.repos.getReleaseByTag).not.toHaveBeenCalled()
+  assertNoWrites()
+})
+
 test('release publication failure propagates without undoing the exact tag', async() => {
   const error = apiError(422)
   octokit.rest.repos.createRelease.mockRejectedValue(error)
