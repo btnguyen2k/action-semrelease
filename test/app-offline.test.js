@@ -571,8 +571,8 @@ describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from
   })
 })
 
-test.each(['', '# comment', 'unrecognized message', '#!VERSION=4.1'])(
-  'falls back to pinned history when file yields no notes: %s', async text => {
+test.each(['', '# comment', '#!VERSION=4.1'])(
+  'falls back to pinned history when file contains no messages: %s', async text => {
     octokit.rest.repos.getContent.mockResolvedValue(fileResponse(text))
     const result = await semrelease()
     expect(result.releaseVersion).toBe(text.includes('VERSION') ? '4.1.0' : '0.0.1')
@@ -580,6 +580,47 @@ test.each(['', '# comment', 'unrecognized message', '#!VERSION=4.1'])(
     expect(octokit.rest.repos.listCommits).toHaveBeenCalledWith(expect.objectContaining({sha: 'target'}))
   },
 )
+
+describe('META-01: pinned file message precedence', () => {
+  test.each([false, true])('qualifying file messages take precedence with forced version: %s', async forced => {
+    const text = `${forced ? '#!VERSION=4.1\n' : ''}Fix: from file`
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(text))
+    const result = await semrelease()
+    expect(result).toEqual({
+      result: 'SUCCESS',
+      releaseVersion: forced ? '4.1.0' : '0.0.1',
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: from file',
+    })
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+  })
+
+  test.each([false, true])('unqualified file messages skip without history fallback with forced version: %s', async forced => {
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(
+      `${forced ? '#!VERSION=4.1\n' : ''}unrecognized message\nchore(CI): maintenance`,
+    ))
+    expect(await semrelease()).toMatchObject({
+      result: 'SKIPPED', releaseVersion: '', releaseNotes: '',
+      reason: 'No release info found, or release notes are empty.',
+    })
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test.each([
+    {name: 'empty', commits: []},
+    {name: 'unrecognized', commits: [{sha: 'target', commit: {message: 'unrecognized history message'}}]},
+  ])(
+    'version-only file skips when history is $name', async({commits}) => {
+      octokit.rest.repos.getContent.mockResolvedValue(fileResponse('#!VERSION=4.1'))
+      octokit.rest.repos.listCommits.mockResolvedValue({data: commits})
+      expect(await semrelease()).toMatchObject({
+        result: 'SKIPPED', releaseVersion: '', releaseNotes: '',
+      })
+      expect(octokit.rest.repos.listCommits).toHaveBeenCalledWith(expect.objectContaining({sha: 'target'}))
+      assertNoWrites()
+    },
+  )
+})
 
 test('recognized file messages bypass history scanning but still validate branches', async() => {
   await semrelease()

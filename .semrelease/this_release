@@ -14,3 +14,4 @@
 - patch(release): verify tag absence before ignoring delete conflicts
 - patch(release): warn when failed releases need manual cleanup
 - fix(release): reject invalid or ambiguous version directives
+- fix(release): avoid history fallback for pinned file messages

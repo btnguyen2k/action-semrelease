@@ -109,7 +109,7 @@ async function computeReleaseMeta(octokit, options) {
   const releaseLines = await utils.readReleaseLinesAtCommit(octokit, options.targetSha)
   const releaseOptions = await utils.getReleaseOptionsFromFile(commitLogsFile, releaseLines)
   let commitMessages = await utils.loadCommitMessagesFromFile(commitLogsFile, releaseLines)
-  if (!commitMessages || rules.generateReleaseNotes(commitMessages) === '') {
+  if (!commitMessages || commitMessages.length === 0) {
     // if the file does not exist or no commit messages found, load commit messages from GitHub repo
     core.info(`ℹ️ File ${commitLogsFile} does not exist or no commit messages found, loading commit messages from repo...`)
     core.info(`🕘 Fetching commits from branch <${options.branches}>...`)
