@@ -6,6 +6,9 @@ jest.unstable_mockModule('@actions/github', () => ({
 
 const utils = await import('../src/utils.js')
 
+beforeEach(() => jest.useFakeTimers({advanceTimers: 1000}))
+afterEach(() => jest.useRealTimers())
+
 function apiError(status) {
   return Object.assign(new Error(`API error ${status}`), {status})
 }
@@ -21,6 +24,7 @@ function makeOctokit() {
       git: {
         getRef: jest.fn(),
         getTag: jest.fn(),
+        deleteRef: jest.fn(),
       },
     },
   }
@@ -161,6 +165,7 @@ describe('PAGE-01: commit pagination errors', () => {
 
   describe.each([2, 3, 4])('failure on page %s', failedPage => {
     test.each([404, 403, 422, 429, 500, undefined])('propagates error with status %s', async status => {
+      jest.useFakeTimers()
       const octokit = makeOctokit()
       const error = status === undefined ? new Error('Network failure') : apiError(status)
       const requests = []
@@ -170,8 +175,12 @@ describe('PAGE-01: commit pagination errors', () => {
         return {data: fullPage}
       })
 
-      await expect(utils.getAllCommits(octokit, {sha: 'target'})).rejects.toBe(error)
-      expect(requests).toEqual(Array.from({length: failedPage}, (_, index) => index + 1))
+      const assertion = expect(utils.getAllCommits(octokit, {sha: 'target'})).rejects.toBe(error)
+      await jest.runAllTimersAsync()
+      await assertion
+      const expected = Array.from({length: failedPage}, (_, index) => index + 1)
+      if (status === 500 || status === 429) expected.push(failedPage, failedPage)
+      expect(requests).toEqual(expected)
     })
   })
 
@@ -200,6 +209,31 @@ describe('PAGE-01: commit pagination errors', () => {
     await expect(utils.getAllCommits(octokit, {page: 2})).rejects.toBe(error)
     expect(octokit.rest.repos.listCommits).toHaveBeenCalledTimes(1)
   })
+})
+
+test.each([
+  {method: 'listReleases', helper: 'findLatestRelease', item: {tag_name: 'unmatched'}},
+  {method: 'listTags', helper: 'findLatestTag', item: {name: 'unmatched'}},
+])('later-page 404 in $method fails rather than selecting a fallback baseline', async({method, helper, item}) => {
+  const octokit = makeOctokit()
+  const error = apiError(404)
+  octokit.rest.repos[method] = jest.fn()
+    .mockResolvedValueOnce({data: Array.from({length: 100}, () => item)})
+    .mockRejectedValueOnce(error)
+  await expect(utils[helper](octokit, 'v')).rejects.toBe(error)
+  expect(octokit.rest.repos[method]).toHaveBeenCalledTimes(2)
+})
+
+test.each([false, true])('deletion 422 verifies whether the reference still exists: %s', async exists => {
+  const octokit = makeOctokit()
+  const error = apiError(422)
+  octokit.rest.git.deleteRef.mockRejectedValue(error)
+  if (exists) octokit.rest.git.getRef.mockResolvedValue({data: {object: {type: 'commit', sha: 'target'}}})
+  else octokit.rest.git.getRef.mockRejectedValue(apiError(404))
+  if (exists) await expect(utils.deleteRefSilently(octokit, 'tags/v1')).rejects.toBe(error)
+  else await expect(utils.deleteRefSilently(octokit, 'tags/v1')).resolves.toBeUndefined()
+  expect(octokit.rest.git.deleteRef).toHaveBeenCalledTimes(1)
+  expect(octokit.rest.git.getRef).toHaveBeenCalledWith(expect.objectContaining({ref: 'tags/v1'}))
 })
 
 describe('pinned commit history', () => {

@@ -51,7 +51,11 @@ This Action analyzes commit messages to determine if a new release is needed, an
 
 The version baseline comes from the latest matching GitHub release, falling back to a matching tag, then `0.0.0`. History scanning starts at the release creation date or the tag commit's committer date. A missing tag baseline commit causes an explicit failure.
 
-Any commit-history API error on page 2 or later fails the run rather than using partial history. A successful empty page completes pagination normally; a first-page 404 retains the empty-result behavior.
+GitHub API reads retry transient network errors, HTTP 500/502/503/504, and rate limits (429 or rate-limited 403), with at most three attempts per request and a 30-second timeout per attempt. Backoff starts at one second and doubles; rate-limit waits honor `Retry-After` and primary-limit reset times, with a one-minute fallback for rate limits without timing headers. Total retry waits are limited to 120 seconds per request; a server delay exceeding the remaining budget causes failure, never an early retry. Other errors fail immediately, except documented not-found fallbacks. Writes are not retried.
+
+Commit, release, and tag pagination fails on page 2 or later after retries are exhausted, rather than using incomplete results. A successful empty page completes pagination normally; a first-page 404 retains the empty-result behavior. An alias deletion returning 422 is ignored only if a read confirms the reference is absent.
+
+Tag creation, alias updates, and release publication are not atomic. A failure stops subsequent operations, fails the action step, and warns which stage failed. No automatic rollback or retry is performed. Inspect the logs and remote state, manually clean up changes introduced by the failed run or restore affected aliases, then retry. Do not delete pre-existing tags/releases blindly; a failed API request may have succeeded remotely before its response was lost. Keep `continue-on-error` disabled so an action failure fails the workflow.
 
 ![Releases and Tags](docs/semrelease-releases-and-tags.png)
 

@@ -27,6 +27,7 @@ export {
 import * as github from '@actions/github'
 import * as core from '@actions/core'
 import fs from 'node:fs'
+import {readGithub} from './github-read.js'
 
 async function readFileAsLines(filename) {
   return await fs.promises.readFile(filename, {encoding: 'utf8'})
@@ -62,11 +63,11 @@ async function resolveBranchTips(octokit, branches) {
   const tips = []
   for (const branch of new Set(branches)) {
     try {
-      const {data: tip} = await octokit.rest.repos.getCommit({
+      const {data: tip} = await readGithub(`resolve branch ${branch}`, () => octokit.rest.repos.getCommit({
         owner: github.context.repo.owner,
         repo: github.context.repo.repo,
         ref: branch,
-      })
+      }))
       tips.push(tip.sha)
     } catch (error) {
       if (error.status !== 404 && error.status !== 422) throw error
@@ -81,12 +82,12 @@ async function validateReleaseBranches(octokit, branches, targetSha) {
   const tips = await resolveBranchTips(octokit, branches)
   for (const sha of tips) {
     if (sha === targetSha) return tips
-    const {data: comparison} = await octokit.rest.repos.compareCommits({
+    const {data: comparison} = await readGithub(`compare ${targetSha} to ${sha}`, () => octokit.rest.repos.compareCommits({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       base: targetSha,
       head: sha,
-    })
+    }))
     if (comparison.status === 'ahead' || comparison.status === 'identical') return tips
   }
   throw new Error(`Target commit ${targetSha} is not reachable from any configured branch`)
@@ -189,12 +190,12 @@ async function getReleaseOptionsFromFile(commitLogsFile, lines) {
 
 async function readReleaseLinesAtCommit(octokit, targetSha) {
   try {
-    const {data: file} = await octokit.rest.repos.getContent({
+    const {data: file} = await readGithub(`release metadata at ${targetSha}`, () => octokit.rest.repos.getContent({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       path: '.semrelease/this_release',
       ref: targetSha,
-    })
+    }))
     if (Array.isArray(file) || file.type !== 'file' || file.encoding !== 'base64') {
       throw new Error('Expected .semrelease/this_release to be a base64-encoded file')
     }
@@ -245,9 +246,9 @@ async function deleteRefSilently(octokit, ref) {
       ref,
     })
   } catch (error) {
-    if (error.status !== 404 && error.status !== 422) {
-      throw error
-    }
+    if (error.status === 404) return
+    if (error.status === 422 && !await getRefByTagName(octokit, ref.replace(/^tags\//, ''))) return
+    throw error
   }
 }
 
@@ -256,7 +257,7 @@ async function getAllBranches(octokit, overrideParams) {
   const params = overrideParams ? {...defaultParams, ...overrideParams} : defaultParams
   const branches = []
   for (;;) {
-    const {data: page} = await octokit.rest.repos.listBranches(params)
+    const {data: page} = await readGithub(`branches page ${params.page}`, () => octokit.rest.repos.listBranches(params))
     branches.push(...page)
     if (page.length < params.per_page) {
       break
@@ -268,11 +269,11 @@ async function getAllBranches(octokit, overrideParams) {
 
 async function getCommit(octokit, sha) {
   try {
-    const {data: commitInfo} = await octokit.rest.git.getCommit({
+    const {data: commitInfo} = await readGithub(`commit ${sha}`, () => octokit.rest.git.getCommit({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       commit_sha: sha,
-    })
+    }))
     return commitInfo
   } catch (error) {
     if (error.status === 404) {
@@ -288,7 +289,7 @@ async function getAllCommits(octokit, overrideParams) {
   const commits = []
   try {
     for (; ;) {
-      const {data: page} = await octokit.rest.repos.listCommits(params)
+      const {data: page} = await readGithub(`commits ${params.sha || 'default branch'} page ${params.page}`, () => octokit.rest.repos.listCommits(params))
       commits.push(...page)
       if (page.length < params.per_page) {
         break
@@ -306,11 +307,11 @@ async function getAllCommits(octokit, overrideParams) {
 
 async function getReleaseByTag(octokit, tagName) {
   try {
-    const {data: releaseInfo} = await octokit.rest.repos.getReleaseByTag({
+    const {data: releaseInfo} = await readGithub(`release ${tagName}`, () => octokit.rest.repos.getReleaseByTag({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       tag: tagName,
-    })
+    }))
     return releaseInfo
   } catch (error) {
     if (error.status === 404) {
@@ -324,7 +325,7 @@ async function findLatestRelease(octokit, tagPrefix) {
   const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
   try {
     for (; ;) {
-      const {data: page} = await octokit.rest.repos.listReleases(params)
+      const {data: page} = await readGithub(`releases page ${params.page}`, () => octokit.rest.repos.listReleases(params))
       for (const release of page) {
         if (release.tag_name.startsWith(tagPrefix) && release.tag_name.slice(tagPrefix.length).match(reSemverRaw)) {
           return release
@@ -336,6 +337,7 @@ async function findLatestRelease(octokit, tagPrefix) {
       params.page++
     }
   } catch (error) {
+    if (params.page > 1) throw error
     if (error.status !== 404) {
       throw error
     }
@@ -345,11 +347,11 @@ async function findLatestRelease(octokit, tagPrefix) {
 
 async function getRefByTagName(octokit, tagName) {
   try {
-    const {data: refInfo} = await octokit.rest.git.getRef({
+    const {data: refInfo} = await readGithub(`tag reference ${tagName}`, () => octokit.rest.git.getRef({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       ref: `tags/${tagName}`
-    })
+    }))
     return refInfo
   } catch (error) {
     if (error.status === 404) {
@@ -363,7 +365,7 @@ async function findLatestTag(octokit, tagPrefix) {
   const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
   try {
     for (; ;) {
-      const {data: page} = await octokit.rest.repos.listTags(params)
+      const {data: page} = await readGithub(`tags page ${params.page}`, () => octokit.rest.repos.listTags(params))
       for (const tag of page) {
         if (tag.name.startsWith(tagPrefix) && tag.name.slice(tagPrefix.length).match(reSemverRaw)) {
           return tag
@@ -375,6 +377,7 @@ async function findLatestTag(octokit, tagPrefix) {
       params.page++
     }
   } catch (error) {
+    if (params.page > 1) throw error
     if (error.status !== 404) {
       throw error
     }
@@ -384,11 +387,11 @@ async function findLatestTag(octokit, tagPrefix) {
 
 async function getTag(octokit, sha) {
   try {
-    const {data: tagInfo} = await octokit.rest.git.getTag({
+    const {data: tagInfo} = await readGithub(`tag object ${sha}`, () => octokit.rest.git.getTag({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       tag_sha: sha,
-    })
+    }))
     return tagInfo
   } catch (error) {
     if (error.status === 404) {

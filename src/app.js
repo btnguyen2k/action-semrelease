@@ -178,7 +178,7 @@ async function semrelease() {
   if (!githubToken) {
     throw new Error('github-token is required')
   }
-  const octokit = github.getOctokit(githubToken)
+  const octokit = github.getOctokit(githubToken, {request: {timeout: 30000}})
 
   // fetch options
   const options = utils.getOptions()
@@ -206,22 +206,36 @@ async function semrelease() {
     return RESULT_SKIPPED
   }
 
-  // create tags
-  await createTag(octokit, tagName, options.targetSha, options.isDryRun)
-  if (options.isTagMajorRelease) {
-    await createTag(octokit, `${options.tagPrefix}${releaseMeta.release_version.major}`, options.targetSha, options.isDryRun, true)
-  }
-  if (options.isTagMinorRelease) {
-    await createTag(octokit, `${options.tagPrefix}${releaseMeta.release_version.major}.${releaseMeta.release_version.minor}`, options.targetSha, options.isDryRun, true)
-  }
+  let stage = `creating exact tag ${tagName}`
+  try {
+    await createTag(octokit, tagName, options.targetSha, options.isDryRun)
+    if (options.isTagMajorRelease) {
+      const alias = `${options.tagPrefix}${releaseMeta.release_version.major}`
+      stage = `updating major alias ${alias}`
+      await createTag(octokit, alias, options.targetSha, options.isDryRun, true)
+    }
+    if (options.isTagMinorRelease) {
+      const alias = `${options.tagPrefix}${releaseMeta.release_version.major}.${releaseMeta.release_version.minor}`
+      stage = `updating minor alias ${alias}`
+      await createTag(octokit, alias, options.targetSha, options.isDryRun, true)
+    }
 
-  // create release
-  const isPrerelease = releaseMeta.release_version.prerelease !== ''
-  core.info(`ℹ️ Release notes:\n${releaseMeta.release_notes}`)
-  if (!options.isTagOnly) {
-    await createRelease(octokit, tagName, releaseMeta, isPrerelease, options.isDryRun)
-  } else {
-    core.info(`⚠️ Tag-only mode enabled, skipped creating release.`)
+    stage = `publishing release ${tagName}`
+    const isPrerelease = releaseMeta.release_version.prerelease !== ''
+    core.info(`ℹ️ Release notes:\n${releaseMeta.release_notes}`)
+    if (!options.isTagOnly) {
+      await createRelease(octokit, tagName, releaseMeta, isPrerelease, options.isDryRun)
+    } else {
+      core.info(`⚠️ Tag-only mode enabled, skipped creating release.`)
+    }
+  } catch (error) {
+    core.warning(
+      `Release ${tagName} at ${options.targetSha} failed while ${stage}. `
+      + 'Partial changes may remain; no automatic rollback was performed. '
+      + 'Inspect the operation logs, tags, enabled aliases, and release; manually clean up or restore '
+      + 'only changes from this failed run before retrying. Do not delete pre-existing tags or releases.',
+    )
+    throw error
   }
 
   return {

@@ -35,6 +35,7 @@ function assertNoWrites() {
 }
 
 beforeEach(() => {
+  jest.useFakeTimers({advanceTimers: 1000})
   savedGithubToken = process.env.GITHUB_TOKEN
   delete process.env.GITHUB_TOKEN
   getOctokit.mockClear()
@@ -90,7 +91,7 @@ test('AUTH-02: input token takes precedence over environment token', async() => 
   process.env.GITHUB_TOKEN = 'environment-token'
   await semrelease()
   expect(getOctokit).toHaveBeenCalledTimes(1)
-  expect(getOctokit).toHaveBeenCalledWith('offline-token')
+  expect(getOctokit).toHaveBeenCalledWith('offline-token', {request: {timeout: 30000}})
 })
 
 test('AUTH-02: environment token is used when input is absent', async() => {
@@ -98,7 +99,7 @@ test('AUTH-02: environment token is used when input is absent', async() => {
   process.env.GITHUB_TOKEN = 'environment-token'
   await semrelease()
   expect(getOctokit).toHaveBeenCalledTimes(1)
-  expect(getOctokit).toHaveBeenCalledWith('environment-token')
+  expect(getOctokit).toHaveBeenCalledWith('environment-token', {request: {timeout: 30000}})
 })
 
 test('creates the exact tag at the resolved target without deleting refs', async() => {
@@ -139,7 +140,7 @@ test.each([403, 500])('TARGET-01: target lookup HTTP %s stops before metadata or
   const error = apiError(status)
   octokit.rest.git.getCommit.mockRejectedValue(error)
   await expect(semrelease()).rejects.toBe(error)
-  expect(octokit.rest.git.getCommit).toHaveBeenCalledTimes(1)
+  expect(octokit.rest.git.getCommit).toHaveBeenCalledTimes(status === 500 ? 3 : 1)
   expect(octokit.rest.git.getCommit).toHaveBeenCalledWith({
     owner: 'owner', repo: 'repo', commit_sha: 'target',
   })
@@ -188,7 +189,7 @@ describe('HIST-01: configured branch validation', () => {
     const error = apiError(status)
     octokit.rest.repos.getCommit.mockRejectedValue(error)
     await expect(semrelease()).rejects.toBe(error)
-    expect(warning).not.toHaveBeenCalled()
+    if (status === 403) expect(warning).not.toHaveBeenCalled()
     expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
     assertNoWrites()
   })
@@ -231,7 +232,7 @@ describe('HIST-02: target membership in pinned branches', () => {
     const error = apiError(status)
     octokit.rest.repos.compareCommits.mockRejectedValue(error)
     await expect(semrelease()).rejects.toBe(error)
-    expect(warning).not.toHaveBeenCalled()
+    if (status !== 500) expect(warning).not.toHaveBeenCalled()
     expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
     assertNoWrites()
   })
@@ -398,6 +399,7 @@ test('unexpected ref creation error propagates', async() => {
   octokit.rest.git.createRef.mockRejectedValue(error)
   await expect(semrelease()).rejects.toBe(error)
   expect(octokit.rest.repos.createRelease).not.toHaveBeenCalled()
+  expect(warning).toHaveBeenCalledWith(expect.stringContaining('failed while creating exact tag v1.2.3'))
 })
 
 test.each([
@@ -430,6 +432,37 @@ test.each([
   })))
   expect(octokit.rest.git.deleteRef.mock.calls.map(([params]) => params.ref)).toEqual(deletedRefs)
   expect(octokit.rest.repos.createRelease).not.toHaveBeenCalled()
+  expect(warning).toHaveBeenCalledWith(expect.stringContaining('manually clean up or restore'))
+})
+
+describe.each(['v1', 'v1.2'])('ALIAS-02: failure updating %s', failedAlias => {
+  test.each(['deleteRef', 'createRef'])('%s failure stops publication without rollback', async method => {
+    inputs['tag-major-release'] = 'true'
+    inputs['tag-minor-release'] = 'true'
+    const error = apiError(500)
+    octokit.rest.git[method].mockImplementation(async({ref}) => {
+      if (ref === `${method === 'deleteRef' ? 'tags/' : 'refs/tags/'}${failedAlias}`) throw error
+      return {}
+    })
+
+    await expect(semrelease()).rejects.toBe(error)
+
+    expect(octokit.rest.git.createTag.mock.calls.map(([params]) => params.tag)).toEqual(
+      failedAlias === 'v1' ? ['v1.2.3', 'v1'] : ['v1.2.3', 'v1', 'v1.2'],
+    )
+    expect(octokit.rest.git.deleteRef.mock.calls.map(([params]) => params.ref)).toEqual(
+      failedAlias === 'v1' ? ['tags/v1'] : ['tags/v1', 'tags/v1.2'],
+    )
+    const createdRefs = ['refs/tags/v1.2.3']
+    if (failedAlias === 'v1.2') createdRefs.push('refs/tags/v1')
+    if (method === 'createRef') createdRefs.push(`refs/tags/${failedAlias}`)
+    expect(octokit.rest.git.createRef.mock.calls.map(([params]) => params.ref)).toEqual(createdRefs)
+    expect(octokit.rest.repos.createRelease).not.toHaveBeenCalled()
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining(
+      `failed while updating ${failedAlias === 'v1' ? 'major' : 'minor'} alias ${failedAlias}`,
+    ))
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('no automatic rollback'))
+  })
 })
 
 test('enabled aliases are recreated separately from the exact tag', async() => {
@@ -577,9 +610,12 @@ test('release publication failure propagates without undoing the exact tag', asy
   await expect(semrelease()).rejects.toBe(error)
   expect(octokit.rest.git.createRef).toHaveBeenCalledTimes(1)
   expect(octokit.rest.git.deleteRef).not.toHaveBeenCalled()
+  expect(warning).toHaveBeenCalledWith(expect.stringContaining('failed while publishing release v1.2.3'))
+  expect(warning).toHaveBeenCalledWith(expect.stringContaining('manually clean up or restore'))
 })
 
 afterEach(() => {
+  jest.useRealTimers()
   if (savedGithubToken === undefined) delete process.env.GITHUB_TOKEN
   else process.env.GITHUB_TOKEN = savedGithubToken
   jest.restoreAllMocks()

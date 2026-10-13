@@ -16,3 +16,7 @@
 - BREAKING CHANGE: require targets to be reachable from a configured branch
 - fix(release): identify missing baseline commits and their tags
 - fix(release): fail on commit-history errors after the first page
+- fix(api): retry transient GitHub reads within a bounded budget
+- fix(release): fail on incomplete release and tag pagination
+- fix(release): verify tag absence before ignoring delete conflicts
+- fix(release): report partial publication and post-release failures

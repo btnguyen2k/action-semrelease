@@ -127,6 +127,7 @@ jobs:
           tag-minor-release: true
           branches: ${{ env.BRANCH_TO_RELEASE }}
       - name: Cleanup file .semrelease/this_release
+        id: cleanup_release_metadata
         run: |
           RESULT='${{ steps.semrelease.outputs.result }}'
           if [ "${RESULT}" == "SUCCESS" ]; then
@@ -142,6 +143,17 @@ jobs:
             echo "✅ Done."
           else
             echo "❎ SKIPPED."
+          fi
+
+      - name: Report partial release failure
+        if: failure()
+        env:
+          RELEASE_RESULT: ${{ steps.semrelease.outputs.result }}
+        run: |
+          if [ "${RELEASE_RESULT}" == "SUCCESS" ]; then
+            echo "::warning::Release publication succeeded, but a later workflow step failed. Inspect the release and cleanup commit/push; complete the remaining cleanup manually before retrying. Do not delete the successful release or rerun publication blindly."
+          else
+            echo "::warning::Release workflow failed. Earlier steps may have pushed build or metadata commits, created tags/releases, or changed aliases. No automatic rollback was performed. Inspect failed-step logs and remote state; manually clean up or restore only changes from this run before retrying. Do not blindly delete pre-existing tags/releases or revert unrelated commits."
           fi
 
   mergeToMain:
@@ -168,3 +180,7 @@ jobs:
               maintainer_can_modify: true,
             });
             console.log('✅ Created PR: ', pr);
+      - name: Report post-release PR failure
+        if: failure()
+        run: |
+          echo "::warning::Post-release PR creation failed; publication may already have succeeded. Inspect existing release-to-main PRs before retrying because a lost response may hide successful creation. Do not rerun or undo publication to resolve this PR failure."
