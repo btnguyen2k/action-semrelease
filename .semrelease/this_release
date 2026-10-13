@@ -9,9 +9,10 @@
 - fix(release): keep exact version tags immutable
 - BREAKING CHANGE: require release targets to belong to configured branches
 - patch(release): report missing release baselines explicitly
-- patch(release): reject incomplete history and baseline pagination
+- fix(release): reject incomplete history and baseline pagination
 - patch(api): retry transient reads and rate limits within a bounded budget
-- patch(release): verify tag absence before ignoring delete conflicts
+- fix(release): verify tag absence before ignoring delete conflicts
 - patch(release): warn when failed releases need manual cleanup
 - fix(release): reject invalid or ambiguous version directives
 - fix(release): avoid history fallback for pinned file messages
+- patch(release): fail when a release exists without its exact tag

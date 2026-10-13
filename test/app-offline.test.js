@@ -366,6 +366,68 @@ test.each([false, true])('rejects conflicting tag even if release exists: %s', a
   assertNoWrites()
 })
 
+describe.each(['release', 'tag'])('BASE-04: historical target with latest %s baseline', source => {
+  const since = '2026-02-01T00:00:00Z'
+  beforeEach(() => {
+    octokit.rest.git.getCommit.mockImplementation(async({commit_sha}) => ({
+      data: {sha: commit_sha, committer: {
+        date: commit_sha === 'target' ? '2026-01-01T00:00:00Z' : since,
+      }},
+    }))
+    if (source === 'release') {
+      octokit.rest.repos.listReleases.mockResolvedValue({data: [
+        {tag_name: 'v2.3.4', created_at: since, target_commitish: 'newer-baseline'},
+      ]})
+    } else {
+      octokit.rest.repos.listTags.mockResolvedValue({data: [
+        {name: 'v2.3.4', commit: {sha: 'newer-baseline'}},
+      ]})
+    }
+  })
+
+  test.each([
+    {text: 'Fix: historical change', version: '2.3.5'},
+    {text: '#!VERSION=1.8.0\nFix: historical change', version: '1.8.0'},
+  ])('file metadata produces $version at the historical target', async({text, version}) => {
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(text))
+    expect(await semrelease()).toMatchObject({
+      result: 'SUCCESS', releaseVersion: version,
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: historical change',
+    })
+    expect(octokit.rest.git.createTag).toHaveBeenCalledWith(expect.objectContaining({
+      tag: `v${version}`, object: 'target',
+    }))
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.compareCommits).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.repos.compareCommits).toHaveBeenCalledWith(expect.objectContaining({
+      base: 'target', head: 'branch-tip',
+    }))
+  })
+
+  test('history fallback retains the newer baseline date and skips empty results', async() => {
+    octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+    octokit.rest.repos.listCommits.mockResolvedValue({data: []})
+    expect(await semrelease()).toMatchObject({
+      result: 'SKIPPED', releaseVersion: '', releaseNotes: '',
+    })
+    expect(octokit.rest.repos.listCommits.mock.calls.map(([params]) => ({
+      sha: params.sha, since: params.since,
+    }))).toEqual([{sha: 'target', since}, {sha: 'branch-tip', since}])
+    assertNoWrites()
+  })
+})
+
+test.each([false, true])('RELEASE-01: existing release with missing exact tag fails in dry-run=%s', async dryRun => {
+  inputs['dry-run'] = String(dryRun)
+  inputs['tag-major-release'] = 'true'
+  inputs['tag-minor-release'] = 'true'
+  octokit.rest.repos.getReleaseByTag.mockResolvedValue({data: {id: 1}})
+  await expect(semrelease()).rejects.toThrow(
+    'Release v1.2.3 exists but its exact tag is missing. Inspect the release and manually restore or clean up its state before retrying',
+  )
+  assertNoWrites()
+})
+
 test('existing release is skipped after matching tag verification', async() => {
   octokit.rest.git.getRef.mockResolvedValue({data: {object: {type: 'commit', sha: 'target'}}})
   octokit.rest.repos.getReleaseByTag.mockResolvedValue({data: {id: 1}})

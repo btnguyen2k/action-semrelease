@@ -199,8 +199,11 @@ async function semrelease() {
 
   core.info(`ℹ️ Release version: ${releaseMeta.release_version.semver}`)
   const tagName = `${options.tagPrefix}${releaseMeta.release_version.semver}`
-  await verifyReleaseTag(octokit, tagName, options.targetSha)
+  const existingTag = await verifyReleaseTag(octokit, tagName, options.targetSha)
   if (await utils.getReleaseByTag(octokit, tagName)) {
+    if (!existingTag) {
+      throw new Error(`Release ${tagName} exists but its exact tag is missing. Inspect the release and manually restore or clean up its state before retrying; no automatic repair was performed.`)
+    }
     core.info(`⚠️ Release ${tagName} already exists, skipped.`)
     RESULT_SKIPPED.reason = `Release ${tagName} already exists.`
     return RESULT_SKIPPED

@@ -51,6 +51,10 @@ This Action analyzes commit messages to determine if a new release is needed, an
 
 The version baseline comes from the latest matching GitHub release, falling back to a matching tag, then `0.0.0`. History scanning starts at the release creation date or the tag commit's committer date. A missing tag baseline commit causes an explicit failure.
 
+Historical targets use that same latest baseline, even if it is newer than the target. Qualifying file messages can therefore bump the latest version on an older commit; a forced version overrides the calculated version. History fallback still uses the latest baseline date and may yield no qualifying messages.
+
+An existing release with a matching exact tag is skipped. If the release exists but its exact tag is missing, the action fails (including in dry-run) and requires manual inspection and restoration or cleanup; it does not recreate the tag automatically.
+
 GitHub API reads retry transient network errors, HTTP 500/502/503/504, and rate limits (429 or rate-limited 403), with at most three attempts per request and a 30-second timeout per attempt. Backoff starts at one second and doubles; rate-limit waits honor `Retry-After` and primary-limit reset times, with a one-minute fallback for rate limits without timing headers. Total retry waits are limited to 120 seconds per request; a server delay exceeding the remaining budget causes failure, never an early retry. Other errors fail immediately, except documented not-found fallbacks. Writes are not retried.
 
 Commit, release, and tag pagination fails on page 2 or later after retries are exhausted, rather than using incomplete results. A successful empty page completes pagination normally; a first-page 404 retains the empty-result behavior. An alias deletion returning 422 is ignored only if a read confirms the reference is absent.
