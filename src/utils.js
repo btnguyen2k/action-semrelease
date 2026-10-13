@@ -171,21 +171,27 @@ function getOptions() {
 }
 
 async function getReleaseOptionsFromFile(commitLogsFile, lines) {
-  const releaseOptions = {}
-  await (lines === undefined ? readFileAsLines(commitLogsFile || '.semrelease/this_release') : Promise.resolve(lines))
-    .then(commitLogs => {
-      if (commitLogs) {
-        commitLogs.forEach(line => {
-          const parts = line.trim().split('=')
-          if (parts.length === 2) {
-            if (parts[0].trim().toUpperCase() === '#!VERSION') {
-              releaseOptions['releaseVersion'] = parts[1].trim()
-            }
-          }
-        })
-      }
-    })
-  return releaseOptions
+  const filename = commitLogsFile || '.semrelease/this_release'
+  const commitLogs = lines === undefined ? await readFileAsLines(filename) : lines
+  const directives = (commitLogs || [])
+    .map((text, index) => ({text: text.trim(), line: index + 1}))
+    .filter(({text}) => /^#!VERSION\b/i.test(text))
+  if (directives.length > 1) {
+    throw new Error(`Multiple version directives in ${filename} at lines ${directives.map(({line}) => line).join(', ')}; only one is allowed`)
+  }
+  if (directives.length === 0) return {}
+  const {text, line} = directives[0]
+  const match = text.match(/^#!VERSION\s*=\s*([^=]+)$/i)
+  if (!match || !match[1].trim()) {
+    throw new Error(`Malformed version directive in ${filename} at line ${line}; expected #!VERSION=<version>`)
+  }
+  const releaseVersion = match[1].trim()
+  try {
+    normalizeReleaseVersion(releaseVersion)
+  } catch (error) {
+    throw new Error(`Invalid version number in ${filename} at line ${line}: ${releaseVersion}`, {cause: error})
+  }
+  return {releaseVersion}
 }
 
 async function readReleaseLinesAtCommit(octokit, targetSha) {

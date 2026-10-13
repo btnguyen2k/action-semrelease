@@ -103,6 +103,43 @@ describe('readReleaseLinesAtCommit', () => {
   })
 })
 
+describe('META-02: version directives', () => {
+  test.each([
+    ['#!VERSION=4.1', '4.1'],
+    ['  #!version = v4.1-rc.1  ', 'v4.1-rc.1'],
+    ['#!VERSION=4.1.2+build.7', '4.1.2+build.7'],
+  ])('accepts one valid directive %s', async(directive, version) => {
+    expect(await utils.getReleaseOptionsFromFile('metadata', ['# comment', directive]))
+      .toEqual({releaseVersion: version})
+  })
+
+  test.each([
+    ['#!VERSION=1.0.0', '#!VERSION=2.0.0'],
+    ['#!VERSION=1.0.0', '#!version=1.0.0'],
+    ['#!VERSION=invalid', '#!VERSION='],
+  ])('rejects multiple directives %j', async(first, second) => {
+    await expect(utils.getReleaseOptionsFromFile('metadata', [first, '# comment', second]))
+      .rejects.toThrow('Multiple version directives in metadata at lines 1, 3')
+  })
+
+  test.each(['#!VERSION=', '#!VERSION=  ', '#!VERSION', '#!VERSION 2.0.0', '#!VERSION=2.0.0=extra'])(
+    'rejects malformed directive %s', async directive => {
+      await expect(utils.getReleaseOptionsFromFile('metadata', ['# comment', directive]))
+        .rejects.toThrow('Malformed version directive in metadata at line 2')
+    },
+  )
+
+  test.each(['invalid', '04', '1.2.3.4', '1-01'])('rejects invalid version %s', async version => {
+    await expect(utils.getReleaseOptionsFromFile('metadata', [`#!VERSION=${version}`]))
+      .rejects.toThrow(`Invalid version number in metadata at line 1: ${version}`)
+  })
+
+  test('ignores ordinary comments and other directives', async() => {
+    expect(await utils.getReleaseOptionsFromFile('metadata', ['# VERSION=invalid', '#!OTHER=value']))
+      .toEqual({})
+  })
+})
+
 describe('resolveTagCommit', () => {
   test('missing ref returns null', async() => {
     const octokit = makeOctokit()

@@ -20,3 +20,4 @@
 - fix(release): fail on incomplete release and tag pagination
 - fix(release): verify tag absence before ignoring delete conflicts
 - fix(release): report partial publication and post-release failures
+- fix(release): reject invalid version directives before history fallback

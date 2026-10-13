@@ -107,6 +107,7 @@ async function computeReleaseMeta(octokit, options) {
   // firstly, try to load commit messages from .semrelease/this_release
   core.info(`ℹ️ Try loading commit messages from file ${commitLogsFile}...`)
   const releaseLines = await utils.readReleaseLinesAtCommit(octokit, options.targetSha)
+  const releaseOptions = await utils.getReleaseOptionsFromFile(commitLogsFile, releaseLines)
   let commitMessages = await utils.loadCommitMessagesFromFile(commitLogsFile, releaseLines)
   if (!commitMessages || rules.generateReleaseNotes(commitMessages) === '') {
     // if the file does not exist or no commit messages found, load commit messages from GitHub repo
@@ -138,7 +139,6 @@ async function computeReleaseMeta(octokit, options) {
     }
   }
 
-  const releaseOptions = await utils.getReleaseOptionsFromFile(commitLogsFile, releaseLines)
   core.info(`ℹ️ releaseOptions: ${JSON.stringify(releaseOptions, null, 2)}`)
   if (releaseOptions.releaseVersion) {
     core.info(`✴️ Release version forced to ${releaseOptions.releaseVersion}.`)

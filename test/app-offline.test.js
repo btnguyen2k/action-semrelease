@@ -505,6 +505,20 @@ test('invalid forced version fails before writing tags', async() => {
   assertNoWrites()
 })
 
+test.each([
+  '#!VERSION=1.0.0\n#!VERSION=2.0.0',
+  '#!VERSION=',
+  '#!VERSION 2.0.0',
+  '#!VERSION=2.0.0=extra',
+  '#!VERSION=invalid',
+])('META-02: invalid metadata fails before fallback or publication: %s', async text => {
+  octokit.rest.repos.getContent.mockResolvedValue(fileResponse(text))
+  await expect(semrelease()).rejects.toThrow(/version (directive|number)/i)
+  expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+  expect(octokit.rest.git.getRef).not.toHaveBeenCalled()
+  assertNoWrites()
+})
+
 describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from %s', source => {
   const major = 'Breaking change: remove legacy API'
   const minor = 'Added new API'

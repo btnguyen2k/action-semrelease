@@ -205,7 +205,7 @@ Before reading release metadata, the action resolves configured branch tips once
 Branch validation also applies when the metadata file supplies the version and release notes, and is independent of date/path filters. A pull-request merge SHA not reachable from a configured branch fails validation; use a reachable `target-sha` and appropriate `branches` instead.
 
 If the file yields no recognized release notes, the action falls back to commit logs using the same pinned branch tips. Only commits reachable from both the target and configured branches are included, with the existing date and path filters. Valid branches and target with no qualifying messages still produce a skipped result.
-Custom versions such as `4` and `4.1` are normalized to `4.0.0` and `4.1.0`; versions that cannot be normalized to valid Semantic Versioning cause an error.
+Custom versions such as `4` and `4.1` are normalized to `4.0.0` and `4.1.0`. At most one `#!VERSION=<version>` directive is allowed (case-insensitive, with surrounding whitespace accepted). Duplicate directives, empty/malformed directives, and invalid versions fail with file and line information, even when no qualifying messages exist. Ordinary comments and other directives are ignored.
 
 Full version tags are immutable: an existing tag at the target commit is reused, and a tag at another commit causes an error, even if its release already exists.
 Enabled major/minor alias tags are still recreated at the target commit when publishing; the existing skip behavior for an already-published release remains unchanged.
