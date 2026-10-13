@@ -6,38 +6,38 @@ branding:
   color: 'red'
 inputs:
   github-token:
-    description: 'GitHub token with access to your repository scoped in as a secret'
+    description: 'GitHub token or PAT with repository access and Contents write permission to publish'
     required: true
   dry-run:
-    description: 'Dry run flag'
+    description: 'Set to true to calculate version and notes without creating tags or releases'
     required: false
     default: 'false'
   target-sha:
-    description: 'Commit SHA to release; defaults to the workflow event SHA and must be reachable from a configured branch'
+    description: 'Commit SHA to release; defaults to the event SHA and must be a tip or ancestor of a configured branch'
     required: false
     default: ''
   tag-prefix:
-    description: 'Tag prefix, e.g. v'
+    description: 'Prefix for version lookup and release tags, e.g. v for v1.2.3'
     required: false
     default: 'v'
   tag-major-release:
-    description: 'If set, a major release tag will be created, e.g. v1'
+    description: 'Set to true to also create or move the major-version alias, e.g. v1'
     required: false
     default: 'true'
   tag-minor-release:
-    description: 'If set, a minor release tag will be created, e.g. v1.2'
+    description: 'Set to true to also create or move the minor-version alias, e.g. v1.2'
     required: false
     default: 'false'
   branches:
-    description: 'Branches to validate the target and fetch commit messages; at least one must exist'
+    description: 'Comma-separated branches for target validation and commit scanning, e.g. main,release,dev'
     required: false
     default: 'main,master'
   path:
-    description: 'Scan only commits containing this file path'
+    description: 'Repository-relative file or directory path to filter commit scanning; empty means all paths'
     required: false
     default: ''
   tag-only:
-    description: 'If set, only tags are created'
+    description: 'Set to true to create tags without publishing a GitHub release'
     required: false
     default: 'false'
 outputs:

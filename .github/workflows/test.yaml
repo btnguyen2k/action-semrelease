@@ -67,6 +67,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: true
           tag-prefix: vt
+          branches: main, master, release, dev # since v5.0.0, the action checks if targets are reachable from a configured branch, hence we need to include all relevant branches here
       - name: Check output (default branches)
         run: |
           RESULT='${{ steps.run-action-default.outputs.result }}'

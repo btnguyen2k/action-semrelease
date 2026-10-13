@@ -167,14 +167,15 @@ The following inputs are accepted:
 
 | Input                         | Required | Default         | Description                                                                   |
 |-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
-| github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
-| dry-run                       | No       | `false`         | If `true`, the Action will run in dry-run mode.                               |
-| target-sha                    | No       | Event SHA       | Commit SHA to release; metadata and tags are pinned to this commit.           |
-| tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
-| tag-major-release             | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                     |
-| tag-minor-release             | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                   |
-| branches                      | No       | `'main,master'` | Comma-separated list of branches to scan for commit messages.                 |
-| path                          | No       | `''`            | Scan and Analyze only commits containing this file path.                      |
+| github-token                  | Yes      |                 | Supply `${{ secrets.GITHUB_TOKEN }}` or a PAT via secrets. Requires repository read access and Contents write permission to create tags/releases; dry-run only requires read access. |
+| dry-run                       | No       | `false`         | If `true`, calculate version/notes without creating tags or releases. API reads and validation still run. A workspace `.semrelease-dry-run` file enables this even when the input is `false`. |
+| target-sha                    | No       | Event SHA       | Commit to release; must be a tip or ancestor of a configured branch. Metadata and tags are pinned to it. The same validation applies to the default event SHA and dry-run. |
+| tag-prefix                    | No       | `'v'`           | Prefix used to find previous versions and name release tags, e.g. `v1.2.3`. |
+| tag-major-release             | No       | `true`          | If `true`, create or move the major-version alias, e.g. `v1`, in addition to the full-version tag. |
+| tag-minor-release             | No       | `false`         | If `true`, create or move the minor-version alias, e.g. `v1.2`, in addition to the full-version tag. |
+| branches                      | No       | `'main,master'` | Comma-separated branch names, e.g. `main,release,dev`; semicolons and whitespace also work. Used for target validation, even with file metadata, and history fallback. Missing branches (404/422) warn and are skipped; an empty list, all missing branches, or no branch containing the target causes failure. |
+| path                          | No       | `''`            | Repository-relative file/directory path, e.g. `src`, to filter commits for release notes. Empty means all paths; does not affect branch validation or file metadata. |
+| tag-only                      | No       | `false`         | If `true`, create release tags and enabled version aliases without publishing a GitHub release. |
 
 > **Migrating to v5:** the `auto-mode` and `changelog-file` inputs and their `AUTO_MODE` and `CHANGELOG_FILE` environment variables have been removed.
 > Version calculation is always automatic; `RELEASE-NOTES` and `CHANGELOG` files are no longer parsed for release metadata.
