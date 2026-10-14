@@ -675,6 +675,41 @@ test('normalizes a partial prerelease version and marks the release accordingly'
   }))
 })
 
+test.each([
+  {version: '1.2.3+build.7', prerelease: false, name: 'Release'},
+  {version: '1.2.3-rc.1+build.7', prerelease: true, name: 'Pre-release'},
+])('RELEASE-03: custom prefix preserves $version in outputs and publication', async({version, prerelease, name}) => {
+  inputs['tag-prefix'] = 'service-'
+  inputs['tag-major-release'] = 'true'
+  inputs['tag-minor-release'] = 'true'
+  octokit.rest.repos.getContent.mockResolvedValue(fileResponse(`#!VERSION=${version}\nfix: issue`))
+  octokit.rest.git.createTag.mockImplementation(async({tag}) => ({data: {sha: `object-${tag}`}}))
+  const notes = '### Fixed/Improvements\n\n- Fix: issue'
+  const tagName = `service-${version}`
+  const tags = [tagName, 'service-1', 'service-1.2']
+
+  expect(await semrelease()).toEqual({
+    result: 'SUCCESS', releaseVersion: version, releaseNotes: notes,
+  })
+  expect(octokit.rest.git.createTag.mock.calls).toEqual(tags.map(tag => [{
+    owner: 'owner', repo: 'repo', tag, message: `Release ${tag}`, object: 'target', type: 'commit',
+  }]))
+  expect(octokit.rest.git.createRef.mock.calls).toEqual(tags.map(tag => [{
+    owner: 'owner', repo: 'repo', ref: `refs/tags/${tag}`, sha: `object-${tag}`,
+  }]))
+  expect(octokit.rest.git.deleteRef.mock.calls).toEqual([
+    [{owner: 'owner', repo: 'repo', ref: 'tags/service-1'}],
+    [{owner: 'owner', repo: 'repo', ref: 'tags/service-1.2'}],
+  ])
+  expect(octokit.rest.repos.getReleaseByTag).toHaveBeenCalledWith({
+    owner: 'owner', repo: 'repo', tag: tagName,
+  })
+  expect(octokit.rest.repos.createRelease.mock.calls).toEqual([[{
+    owner: 'owner', repo: 'repo', tag_name: tagName,
+    name: `${name} ${tagName}`, body: notes, prerelease,
+  }]])
+})
+
 test('invalid forced version fails before writing tags', async() => {
   octokit.rest.repos.getContent.mockResolvedValue(fileResponse('#!VERSION=invalid\nfix: issue'))
   await expect(semrelease()).rejects.toThrow('Invalid version number')
