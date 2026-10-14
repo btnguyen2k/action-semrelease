@@ -845,6 +845,111 @@ test('release publication failure propagates without undoing the exact tag', asy
   expect(warning).toHaveBeenCalledWith(expect.stringContaining('manually clean up or restore'))
 })
 
+describe('HIST-04: filtered merge history', () => {
+  const since = '2026-01-01T00:00:00Z'
+  const commit = (sha, message, date, parents = []) => ({
+    sha, commit: {message, committer: {date}}, parents: parents.map(parent => ({sha: parent})),
+  })
+
+  test('uses filtered API results, includes merged ancestry, excludes post-target commits, and deduplicates branches', async() => {
+    inputs.branches = 'main,release'
+    inputs.path = 'src'
+    octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+    octokit.rest.repos.listReleases.mockResolvedValue({data: [
+      {tag_name: 'v2.3.4', created_at: since},
+    ]})
+    octokit.rest.repos.getCommit.mockImplementation(async({ref}) => ({data: {sha: `${ref}-tip`}}))
+    const boundary = commit('boundary', 'Fix: boundary response', since)
+    const feature = commit('feature', 'Added merged feature', '2026-01-02T00:00:00Z', ['boundary'])
+    const merge = commit('merge', 'Merge feature branch', '2026-01-03T00:00:00Z', ['boundary', 'feature'])
+    const target = commit('target', 'Fix: target response', '2026-01-04T00:00:00Z', ['merge'])
+    const newer = commit('newer', 'Breaking change: future API', '2026-01-05T00:00:00Z', ['target'])
+    // GitHub applies date/path filters; these fixtures represent its filtered responses.
+    octokit.rest.repos.listCommits.mockImplementation(async({sha}) => ({
+      data: sha === 'target' ? [target, merge, feature, boundary] : [newer, target, merge, feature, boundary],
+    }))
+
+    const result = await semrelease()
+
+    expect(result).toEqual({
+      result: 'SUCCESS', releaseVersion: '2.4.0',
+      releaseNotes: '### Added/Refactoring/Deprecation\n\n- Added merged feature'
+        + '\n\n### Fixed/Improvements\n\n- Fix: target response\n- Fix: boundary response',
+    })
+    expect(octokit.rest.repos.listCommits.mock.calls.map(([params]) => ({...params}))).toEqual(
+      ['target', 'main-tip', 'release-tip'].map(sha => ({
+        owner: 'owner', repo: 'repo', page: 1, per_page: 100, sha, path: 'src', since,
+      })),
+    )
+    expect(octokit.rest.git.createTag).toHaveBeenCalledWith(expect.objectContaining({
+      tag: 'v2.4.0', object: 'target',
+    }))
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith(expect.objectContaining({
+      tag_name: 'v2.4.0', body: result.releaseNotes,
+    }))
+  })
+
+  test('empty filtered results skip without writes', async() => {
+    inputs.path = 'src'
+    octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+    octokit.rest.repos.listReleases.mockResolvedValue({data: [
+      {tag_name: 'v2.3.4', created_at: since},
+    ]})
+    octokit.rest.repos.listCommits.mockResolvedValue({data: []})
+
+    expect(await semrelease()).toMatchObject({
+      result: 'SKIPPED', releaseVersion: '', releaseNotes: '',
+    })
+    expect(octokit.rest.repos.listCommits).toHaveBeenCalledTimes(2)
+    for (const [params] of octokit.rest.repos.listCommits.mock.calls) {
+      expect(params).toMatchObject({path: 'src', since})
+    }
+    assertNoWrites()
+  })
+})
+
+describe.each([
+  {name: 'tag object', stop: 0, stage: 'creating exact tag v1.2.3'},
+  {name: 'exact ref', stop: 1, stage: 'creating exact tag v1.2.3'},
+  {name: 'alias deletion', stop: 3, stage: 'updating major alias v1'},
+  {name: 'alias ref', stop: 4, stage: 'updating major alias v1'},
+  {name: 'publication', stop: 8, stage: 'publishing release v1.2.3'},
+])('WRITE-01: $name failure', ({stop, stage}) => {
+  test.each(['server', 'rate limit', 'network'])('%s error never retries writes or rolls back', async kind => {
+    inputs['tag-major-release'] = 'true'
+    inputs['tag-minor-release'] = 'true'
+    const error = kind === 'server' ? apiError(503) : kind === 'rate limit'
+      ? Object.assign(apiError(429), {response: {headers: {'retry-after': '60'}}})
+      : Object.assign(new Error('Connection reset'), {code: 'ECONNRESET'})
+    const expected = [
+      'createTag:v1.2.3', 'createRef:refs/tags/v1.2.3',
+      'createTag:v1', 'deleteRef:tags/v1', 'createRef:refs/tags/v1',
+      'createTag:v1.2', 'deleteRef:tags/v1.2', 'createRef:refs/tags/v1.2',
+      'createRelease:v1.2.3',
+    ]
+    const writes = []
+    for (const method of ['createTag', 'deleteRef', 'createRef', 'createRelease']) {
+      const api = method === 'createRelease' ? octokit.rest.repos : octokit.rest.git
+      api[method].mockImplementation(async params => {
+        writes.push(`${method}:${params.tag || params.ref || params.tag_name}`)
+        if (writes.length === stop + 1) throw error
+        return {data: {sha: 'tag-object'}}
+      })
+    }
+
+    const assertion = expect(semrelease()).rejects.toBe(error)
+    await jest.runAllTimersAsync()
+    await assertion
+
+    expect(writes).toEqual(expected.slice(0, stop + 1))
+    expect(writes.filter(write => write === expected[stop])).toHaveLength(1)
+    expect(warning).toHaveBeenCalledTimes(1)
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining(`failed while ${stage}`))
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('no automatic rollback'))
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('manually clean up or restore'))
+  })
+})
+
 afterEach(() => {
   jest.useRealTimers()
   if (savedGithubToken === undefined) delete process.env.GITHUB_TOKEN
