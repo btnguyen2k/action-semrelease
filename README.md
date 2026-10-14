@@ -416,6 +416,10 @@ This project is licensed under the MIT License. See the [LICENSE.md](LICENSE.md)
 
 ## Support and Contribution
 
+This repository's release workflow pins the merged source commit, calculates the release plan, then updates metadata and builds `dist` in one preparation commit. It tests that prepared commit (including the committed bundle without rebuilding it), checks that its release plan is unchanged, and publishes tags at that exact prepared SHA. Developers do not need to commit generated bundles. Preparation/publication use non-force pushes and stop if the release branch advances; a failed run may leave a preparation commit that needs inspection before retrying. Release metadata is cleared only after publication succeeds.
+
+For pull-request tests, checkout, lint, unit tests and builds use the PR's synthetic merge commit. The built action's live dry-run smoke tests analyze the PR base SHA on its base branch instead, satisfying release-target ancestry validation without excluding the proposed implementation from testing. These smoke tests analyze base metadata, not PR metadata. An explicit reusable-workflow `target-sha` overrides this PR-specific selection and remains the target for both code and action tests.
+
 Feel free to create [pull requests](https://github.com/btnguyen2k/action-semrelease/pulls) or [issues](https://github.com/btnguyen2k/action-semrelease/issues) to report bugs or suggest new features.
 Please search the existing issues before filing new ones to avoid duplicates. For new issues, file your bug or feature request as a new issue.
 
