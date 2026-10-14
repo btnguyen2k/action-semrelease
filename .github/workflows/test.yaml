@@ -2,10 +2,8 @@ name: "test"
 
 on:
   push:
-    branches: [ '*' ]
   pull_request:
     types: [ opened, edited, reopened, synchronize, review_requested ]
-    branches: [ '*' ]
   workflow_call:
     inputs:
       target-sha:
@@ -13,6 +11,11 @@ on:
         required: false
         type: string
         default: ''
+      packaged:
+        description: 'Test the committed action bundle without rebuilding it'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   pin:
@@ -66,9 +69,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
       - name: Run Tests
-        run: |
-          export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-          npm run test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run test
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v7
         env:
@@ -88,8 +91,9 @@ jobs:
         with:
           node-version: 'lts/*'
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Rebuild the dist/ directory
+        if: ${{ !inputs.packaged }}
         run: npm run prepare
       - name: Run Action (default branches)
         id: run-action-default
@@ -101,13 +105,12 @@ jobs:
           tag-prefix: vt
           branches: main, master, release, dev # since v5.0.0, the action checks if targets are reachable from a configured branch, hence we need to include all relevant branches here
       - name: Check output (default branches)
+        env:
+          RESULT: ${{ steps.run-action-default.outputs.result }}
+          VERSION: ${{ steps.run-action-default.outputs.releaseVersion }}
+          RELEASE_NOTES: ${{ steps.run-action-default.outputs.releaseNotes }}
         run: |
-          RESULT='${{ steps.run-action-default.outputs.result }}'
-          VERSION='${{ steps.run-action-default.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-default.outputs.releaseNotes }}'
-          echo -e Result: ${RESULT}
-          echo -e Version: ${VERSION}
-          echo -e Release Notes: ${RELEASE_NOTES}
+          printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
           if [ "${RESULT}" == "SUCCESS" ]; then
             cp -f package.json package.json.bak
             sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
@@ -130,8 +133,9 @@ jobs:
         with:
           node-version: 'lts/*'
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Rebuild the dist/ directory
+        if: ${{ !inputs.packaged }}
         run: npm run prepare
       - name: Run Action (branch scan)
         id: run-action-branches
@@ -143,19 +147,18 @@ jobs:
           branches: main, release, dev, not-exists
           tag-prefix: va
       - name: Check output (branch scan)
+        env:
+          RESULT: ${{ steps.run-action-branches.outputs.result }}
+          VERSION: ${{ steps.run-action-branches.outputs.releaseVersion }}
+          RELEASE_NOTES: ${{ steps.run-action-branches.outputs.releaseNotes }}
         run: |
-          RESULT='${{ steps.run-action-branches.outputs.result }}'
-          VERSION='${{ steps.run-action-branches.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-branches.outputs.releaseNotes }}'
-          echo -e Result: ${RESULT}
-          echo -e Version: ${VERSION}
-          echo -e Release Notes: ${RELEASE_NOTES}
+          printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
           if [ "${RESULT}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
             cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
             cp -f package.json package.json.bak
             head -1 RELEASE-NOTES.md > .temp.md
-            echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
+            printf '\n## %s - v%s\n\n%s\n' "$DATE" "$VERSION" "$RELEASE_NOTES" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
             mv -f .temp.md RELEASE-NOTES.md
             echo ---------- content of RELEASE-NOTES.md ----------
@@ -181,8 +184,9 @@ jobs:
         with:
           node-version: 'lts/*'
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Rebuild the dist/ directory
+        if: ${{ !inputs.packaged }}
         run: npm run prepare
       - name: Run Action (dry-run)
         id: run-action-dry-run
@@ -194,19 +198,18 @@ jobs:
           branches: main, release, dev, not-exists
           tag-prefix: v
       - name: Check output (dry-run)
+        env:
+          RESULT: ${{ steps.run-action-dry-run.outputs.result }}
+          VERSION: ${{ steps.run-action-dry-run.outputs.releaseVersion }}
+          RELEASE_NOTES: ${{ steps.run-action-dry-run.outputs.releaseNotes }}
         run: |
-          RESULT='${{ steps.run-action-dry-run.outputs.result }}'
-          VERSION='${{ steps.run-action-dry-run.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-dry-run.outputs.releaseNotes }}'
-          echo -e Result: ${RESULT}
-          echo -e Version: ${VERSION}
-          echo -e Release Notes: ${RELEASE_NOTES}
+          printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
           if [ "${RESULT}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
             cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
             cp -f package.json package.json.bak
             head -1 RELEASE-NOTES.md > .temp.md
-            echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
+            printf '\n## %s - v%s\n\n%s\n' "$DATE" "$VERSION" "$RELEASE_NOTES" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
             mv -f .temp.md RELEASE-NOTES.md
             echo ---------- content of RELEASE-NOTES.md ----------
