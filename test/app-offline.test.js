@@ -366,6 +366,58 @@ test.each([false, true])('rejects conflicting tag even if release exists: %s', a
   assertNoWrites()
 })
 
+describe.each([1, 2])('TAG-01: exact tag with %s annotated objects', depth => {
+  function mockAnnotatedTag(commitSha) {
+    octokit.rest.git.getRef.mockResolvedValue({data: {object: {type: 'tag', sha: 'annotation-1'}}})
+    octokit.rest.git.getTag.mockImplementation(async({tag_sha}) => ({
+      data: {object: depth === 2 && tag_sha === 'annotation-1'
+        ? {type: 'tag', sha: 'annotation-2'}
+        : {type: 'commit', sha: commitSha}},
+    }))
+  }
+
+  test.each([false, true])('matching target reuses tag with existing release: %s', async releaseExists => {
+    mockAnnotatedTag('target')
+    if (releaseExists) octokit.rest.repos.getReleaseByTag.mockResolvedValue({data: {id: 1}})
+
+    const result = await semrelease()
+
+    expect(result).toMatchObject(releaseExists
+      ? {result: 'SKIPPED', releaseVersion: '', releaseNotes: ''}
+      : {result: 'SUCCESS', releaseVersion: '1.2.3', releaseNotes: '### Fixed/Improvements\n\n- Fix: issue'})
+    expect(octokit.rest.git.createTag).not.toHaveBeenCalled()
+    expect(octokit.rest.git.createRef).not.toHaveBeenCalled()
+    expect(octokit.rest.git.deleteRef).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.getReleaseByTag).toHaveBeenCalledWith(expect.objectContaining({
+      tag: 'v1.2.3',
+    }))
+    const expectedObjects = depth === 1 ? ['annotation-1'] : ['annotation-1', 'annotation-2']
+    expect(octokit.rest.git.getTag.mock.calls.map(([params]) => params.tag_sha)).toEqual(
+      releaseExists ? expectedObjects : [...expectedObjects, ...expectedObjects],
+    )
+    if (releaseExists) assertNoWrites()
+    else {
+      expect(octokit.rest.repos.createRelease).toHaveBeenCalledTimes(1)
+      expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith(expect.objectContaining({
+        tag_name: 'v1.2.3', body: result.releaseNotes,
+      }))
+    }
+  })
+
+  test.each([false, true])('conflicting target fails before release lookup with existing release: %s', async releaseExists => {
+    mockAnnotatedTag('other')
+    if (releaseExists) octokit.rest.repos.getReleaseByTag.mockResolvedValue({data: {id: 1}})
+
+    await expect(semrelease()).rejects.toThrow(
+      'Refusing to move release tag v1.2.3: it points to other, expected target',
+    )
+
+    expect(octokit.rest.git.getTag).toHaveBeenCalledTimes(depth)
+    expect(octokit.rest.repos.getReleaseByTag).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+})
+
 describe.each(['release', 'tag'])('BASE-04: historical target with latest %s baseline', source => {
   const since = '2026-02-01T00:00:00Z'
   beforeEach(() => {
