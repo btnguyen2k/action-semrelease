@@ -61,6 +61,29 @@ describe('parseCommitMessages', () => {
 })
 
 describe('generateReleaseNotes', () => {
+  test.each([
+    {title: 'Changes', prefix: 'breaking change'},
+    {title: 'Removed', prefix: 'removed'},
+    {title: 'Added/Refactoring/Deprecation', prefix: 'feat'},
+    {title: 'Fixed/Improvements', prefix: 'fix'},
+    {title: 'Security', prefix: 'security'},
+    {title: 'Others', prefix: 'dep'},
+  ])('sorts rendered messages in $title without mutating input or dropping duplicates', ({title, prefix}) => {
+    const messages = Object.freeze([
+      `${prefix}: zebra`,
+      `${prefix.toUpperCase()}: Beta`,
+      'chore: ignored',
+      `${prefix}: alpha`,
+      `${prefix}: alpha`,
+    ])
+    const capitalized = prefix.charAt(0).toUpperCase() + prefix.slice(1)
+    const expected = `### ${title}\n\n- ${prefix.toUpperCase()}: Beta`
+      + `\n- ${capitalized}: alpha\n- ${capitalized}: alpha\n- ${capitalized}: zebra`
+
+    expect(rules.generateReleaseNotes(messages)).toBe(expected)
+    expect(rules.generateReleaseNotes([...messages].reverse())).toBe(expected)
+  })
+
   test('empty', () => {
     const releaseNotes = rules.generateReleaseNotes([])
     expect(releaseNotes).toEqual('')
@@ -102,7 +125,7 @@ describe('generateReleaseNotes', () => {
     ]
     const expected = `### Changes\n\n` + commitMessages
       .filter(msg => !msg.startsWith('chore('))
-      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).join('\n')
+      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).sort().join('\n')
     const releaseNotes = rules.generateReleaseNotes(commitMessages)
     expect(releaseNotes).toEqual(expected)
   })
@@ -124,7 +147,7 @@ describe('generateReleaseNotes', () => {
     ]
     const expected = `### Removed\n\n` + commitMessages
       .filter(msg => !msg.startsWith('chore('))
-      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).join('\n')
+      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).sort().join('\n')
     const releaseNotes = rules.generateReleaseNotes(commitMessages)
     expect(releaseNotes).toEqual(expected)
   })
@@ -166,7 +189,7 @@ describe('generateReleaseNotes', () => {
     ]
     const expected = `### Added/Refactoring/Deprecation\n\n` + commitMessages
       .filter(msg => !msg.startsWith('chore('))
-      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).join('\n')
+      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).sort().join('\n')
     const releaseNotes = rules.generateReleaseNotes(commitMessages)
     expect(releaseNotes).toEqual(expected)
   })
@@ -207,7 +230,7 @@ describe('generateReleaseNotes', () => {
     ]
     const expected = `### Fixed/Improvements\n\n` + commitMessages
       .filter(msg => !msg.startsWith('chore('))
-      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).join('\n')
+      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).sort().join('\n')
     const releaseNotes = rules.generateReleaseNotes(commitMessages)
     expect(releaseNotes).toEqual(expected)
   })
@@ -222,7 +245,7 @@ describe('generateReleaseNotes', () => {
     ]
     const expected = `### Security\n\n` + commitMessages
       .filter(msg => !msg.startsWith('chore('))
-      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).join('\n')
+      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).sort().join('\n')
     const releaseNotes = rules.generateReleaseNotes(commitMessages)
     expect(releaseNotes).toEqual(expected)
   })
@@ -236,7 +259,7 @@ describe('generateReleaseNotes', () => {
     ]
     const expected = `### Others\n\n` + commitMessages
       .filter(msg => !msg.startsWith('chore('))
-      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).join('\n')
+      .map(msg => `- ${msg.charAt(0).toUpperCase()+msg.slice(1)}`).sort().join('\n')
     const releaseNotes = rules.generateReleaseNotes(commitMessages)
     expect(releaseNotes).toEqual(expected)
   })

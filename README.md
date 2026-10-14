@@ -47,7 +47,7 @@ jobs:
 
 ## How it works
 
-This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. The following screenshot illustrates the result:
+This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. Messages are sorted within each release-note category using deterministic, case-sensitive lexicographic order after first-letter capitalization; category order is unchanged. The following screenshot illustrates the result:
 
 The version baseline comes from the latest matching GitHub release, falling back to a matching tag, then `0.0.0`. History scanning starts at the release creation date or the tag commit's committer date. A missing tag baseline commit causes an explicit failure.
 

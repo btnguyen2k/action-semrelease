@@ -17,3 +17,4 @@
 - fix(release): avoid history fallback for pinned file messages
 - patch(release): fail when a release exists without its exact tag
 - BREAKING CHANGE: require opt-in for major-version aliases
+- impr(release): sort messages within each release-note category

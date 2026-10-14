@@ -710,6 +710,35 @@ test.each([
   }]])
 })
 
+test.each(['pinned file', 'history'])('sorts published release notes by category from %s', async source => {
+  const messages = [
+    'dep: zebra', 'security: zebra', 'fix: zebra', 'feat: zebra', 'removed: zebra', 'breaking change: zebra',
+    'dep: alpha', 'security: alpha', 'fix: alpha', 'feat: alpha', 'removed: alpha', 'breaking change: alpha',
+    'chore: ignored',
+  ]
+  if (source === 'pinned file') {
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(messages.join('\n')))
+  } else {
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(''))
+    octokit.rest.repos.listCommits.mockResolvedValue({data: messages.map((message, index) => ({
+      sha: `commit-${index}`, commit: {message},
+    }))})
+  }
+  const notes = '### Changes\n\n- Breaking change: alpha\n- Breaking change: zebra'
+    + '\n\n### Removed\n\n- Removed: alpha\n- Removed: zebra'
+    + '\n\n### Added/Refactoring/Deprecation\n\n- Feat: alpha\n- Feat: zebra'
+    + '\n\n### Fixed/Improvements\n\n- Fix: alpha\n- Fix: zebra'
+    + '\n\n### Security\n\n- Security: alpha\n- Security: zebra'
+    + '\n\n### Others\n\n- Dep: alpha\n- Dep: zebra'
+  expect(await semrelease()).toEqual({
+    result: 'SUCCESS', releaseVersion: '1.0.0', releaseNotes: notes,
+  })
+  expect(octokit.rest.repos.createRelease.mock.calls).toEqual([[{
+    owner: 'owner', repo: 'repo', tag_name: 'v1.0.0',
+    name: 'Release v1.0.0', body: notes, prerelease: false,
+  }]])
+})
+
 test('invalid forced version fails before writing tags', async() => {
   octokit.rest.repos.getContent.mockResolvedValue(fileResponse('#!VERSION=invalid\nfix: issue'))
   await expect(semrelease()).rejects.toThrow('Invalid version number')
@@ -909,7 +938,7 @@ describe('HIST-04: filtered merge history', () => {
     expect(result).toEqual({
       result: 'SUCCESS', releaseVersion: '2.4.0',
       releaseNotes: '### Added/Refactoring/Deprecation\n\n- Added merged feature'
-        + '\n\n### Fixed/Improvements\n\n- Fix: target response\n- Fix: boundary response',
+        + '\n\n### Fixed/Improvements\n\n- Fix: boundary response\n- Fix: target response',
     })
     expect(octokit.rest.repos.listCommits.mock.calls.map(([params]) => ({...params}))).toEqual(
       ['target', 'main-tip', 'release-tip'].map(sha => ({
