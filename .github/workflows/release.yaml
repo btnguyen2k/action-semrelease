@@ -12,12 +12,32 @@ env:
   FILE_CHANGELOG: 'RELEASE-NOTES.md'
 
 jobs:
+  pin:
+    runs-on: ubuntu-latest
+    outputs:
+      target-sha: ${{ steps.capture.outputs.target-sha }}
+    steps:
+      - name: Capture pinned commit SHA
+        id: capture
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::target-sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          printf 'target-sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
   callTest:
+    needs: [ pin ]
     uses: ./.github/workflows/test.yaml
+    with:
+      target-sha: ${{ needs.pin.outputs.target-sha }}
 
   dryrun:
     runs-on: ubuntu-latest
-    needs: [ callTest ]
+    needs: [ pin, callTest ]
     if: |
       github.event.pull_request.merged == true
     outputs:
@@ -27,6 +47,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
@@ -40,6 +62,7 @@ jobs:
         uses: ./ # The repo itself is the action, and is always the latest
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ needs.pin.outputs.target-sha }}
           dry-run: true
           tag-major-release: true
           tag-minor-release: true
@@ -49,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       needs.dryrun.outputs.RESULT == 'SUCCESS'
-    needs: [ dryrun ]
+    needs: [ pin, dryrun ]
     outputs:
       RESULT: ${{ steps.semrelease.outputs.result }}
       VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
@@ -59,6 +82,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
@@ -81,7 +106,7 @@ jobs:
             git config --global user.name "CI Build"
             git commit -am "build [skip ci]"
             echo "🕜 Pushing changes to dist/..."
-            git push -f
+            git push origin "HEAD:${BRANCH_TO_RELEASE}"
             echo "✅ Done."
           else
             echo "❎ No changes detected after build."
@@ -115,7 +140,7 @@ jobs:
           git config --global user.email "<>"
           git config --global user.name "CI Build"
           git commit -am "Update metadata for new version ${VERSION}"
-          git push -f
+          git push origin "HEAD:${BRANCH_TO_RELEASE}"
 
           echo "✅ Done."
       - name: SemRelease
@@ -123,6 +148,7 @@ jobs:
         uses: ./ # The repo itself is the action, and is always the latest
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ needs.pin.outputs.target-sha }}
           tag-major-release: true
           tag-minor-release: true
           branches: ${{ env.BRANCH_TO_RELEASE }}
@@ -139,7 +165,7 @@ jobs:
             git config --global user.email "<>"
             git config --global user.name "CI Build"
             git commit -am "Cleanup file .semrelease/this_release post releasing version ${VERSION}"
-            git push -f
+            git push origin "HEAD:${BRANCH_TO_RELEASE}"
             echo "✅ Done."
           else
             echo "❎ SKIPPED."
