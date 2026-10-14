@@ -130,7 +130,7 @@ function getOptions() {
   const inputDryRun = 'dry-run'
   const defaultDryRun = 'false'
   const inputTagMajorRelease = 'tag-major-release'
-  const defaultTagMajorRelease = 'true'
+  const defaultTagMajorRelease = 'false'
   const inputTagMinorRelease = 'tag-minor-release'
   const defaultTagMinorRelease = 'false'
   const inputTagPrefix = 'tag-prefix'

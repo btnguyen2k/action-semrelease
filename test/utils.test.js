@@ -21,7 +21,7 @@ test('incMajorSemver', () => {
 
 test('getOptions - default values', () => {
   const defaultDryRun = false
-  const defaultTagMajorRelease = true
+  const defaultTagMajorRelease = false
   const defaultTagMinorRelease = false
   const defaultTagPrefix = 'v'
   const defaultBranches = ['main', 'master']

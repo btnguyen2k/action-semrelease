@@ -183,13 +183,15 @@ The following inputs are accepted:
 | dry-run                       | No       | `false`         | If `true`, calculate version/notes without creating tags or releases. API reads and validation still run. A workspace `.semrelease-dry-run` file enables this even when the input is `false`. |
 | target-sha                    | No       | Event SHA       | Commit to release; must be a tip or ancestor of a configured branch. Metadata and tags are pinned to it. The same validation applies to the default event SHA and dry-run. |
 | tag-prefix                    | No       | `'v'`           | Prefix used to find previous versions and name release tags, e.g. `v1.2.3`. |
-| tag-major-release             | No       | `true`          | If `true`, create or move the major-version alias, e.g. `v1`, in addition to the full-version tag. |
+| tag-major-release             | No       | `false`         | If `true`, create or move the major-version alias, e.g. `v1`, in addition to the full-version tag. |
 | tag-minor-release             | No       | `false`         | If `true`, create or move the minor-version alias, e.g. `v1.2`, in addition to the full-version tag. |
 | branches                      | No       | `'main,master'` | Comma-separated branch names, e.g. `main,release,dev`; semicolons and whitespace also work. Used for target validation, even with file metadata, and history fallback. Missing branches (404/422) warn and are skipped; an empty list, all missing branches, or no branch containing the target causes failure. |
 | path                          | No       | `''`            | Repository-relative file/directory path, e.g. `src`, to filter commits for release notes. Empty means all paths; does not affect branch validation or file metadata. |
 | tag-only                      | No       | `false`         | If `true`, create release tags and enabled version aliases without publishing a GitHub release. |
 
 > **Migrating to v5:** the `auto-mode` and `changelog-file` inputs and their `AUTO_MODE` and `CHANGELOG_FILE` environment variables have been removed.
+
+Major and minor version aliases are both disabled by default. Set `tag-major-release: true` explicitly to retain the previous default major-alias behavior.
 > Version calculation is always automatic; `RELEASE-NOTES` and `CHANGELOG` files are no longer parsed for release metadata.
 > Remove the obsolete inputs from workflows. To supply commit messages or force a version, use `.semrelease/this_release` as described below.
 

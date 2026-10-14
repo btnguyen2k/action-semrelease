@@ -16,3 +16,4 @@
 - fix(release): reject invalid or ambiguous version directives
 - fix(release): avoid history fallback for pinned file messages
 - patch(release): fail when a release exists without its exact tag
+- BREAKING CHANGE: require opt-in for major-version aliases

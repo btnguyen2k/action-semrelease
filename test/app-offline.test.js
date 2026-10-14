@@ -579,6 +579,30 @@ describe.each(['v1', 'v1.2'])('ALIAS-02: failure updating %s', failedAlias => {
   })
 })
 
+test.each([
+  {name: 'defaults', major: undefined, minor: undefined, aliases: []},
+  {name: 'major only', major: 'true', minor: 'false', aliases: ['v1']},
+  {name: 'minor only', major: 'false', minor: 'true', aliases: ['v1.2']},
+  {name: 'both disabled', major: 'false', minor: 'false', aliases: []},
+])('ALIAS-01: $name creates only selected aliases', async({major, minor, aliases}) => {
+  delete inputs['tag-major-release']
+  delete inputs['tag-minor-release']
+  if (major !== undefined) inputs['tag-major-release'] = major
+  if (minor !== undefined) inputs['tag-minor-release'] = minor
+
+  expect(await semrelease()).toMatchObject({result: 'SUCCESS', releaseVersion: '1.2.3'})
+
+  const tags = ['v1.2.3', ...aliases]
+  expect(octokit.rest.git.createTag.mock.calls.map(([params]) => ({
+    tag: params.tag, object: params.object,
+  }))).toEqual(tags.map(tag => ({tag, object: 'target'})))
+  expect(octokit.rest.git.createRef.mock.calls.map(([params]) => params.ref))
+    .toEqual(tags.map(tag => `refs/tags/${tag}`))
+  expect(octokit.rest.git.deleteRef.mock.calls.map(([params]) => params.ref))
+    .toEqual(aliases.map(tag => `tags/${tag}`))
+  expect(octokit.rest.repos.createRelease).toHaveBeenCalledTimes(1)
+})
+
 test('enabled aliases are recreated separately from the exact tag', async() => {
   inputs['tag-major-release'] = 'true'
   inputs['tag-minor-release'] = 'true'

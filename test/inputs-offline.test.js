@@ -109,6 +109,10 @@ describe('branch-list parsing', () => {
   })
 })
 
+test('ALIAS-01: both version aliases default to disabled', () => {
+  expect(getOptions()).toMatchObject({isTagMajorRelease: false, isTagMinorRelease: false})
+})
+
 describe('dry-run marker', () => {
   test('without the marker dry-run defaults to false', () => {
     expect(getOptions().isDryRun).toBe(false)
