@@ -97,14 +97,14 @@ jobs:
           npm run prepare
 
           echo "🕘 Syncing dist/ directories..."
-          git diff --ignore-space-at-eol dist/
-          if [ "$(git diff --ignore-space-at-eol dist/ | wc -l)" -gt "0" ]; then
+          git add -- dist/
+          if ! git diff --cached --quiet -- dist/; then
             echo "ℹ️ Detected uncommitted changes after build. See status below:"
-            git diff
+            git diff --cached -- dist/
             echo "🕜 Committing changes to dist/..."
             git config --global user.email "<>"
             git config --global user.name "CI Build"
-            git commit -am "build [skip ci]"
+            git commit -m "build [skip ci]" -- dist/
             echo "🕜 Pushing changes to dist/..."
             git push origin "HEAD:${BRANCH_TO_RELEASE}"
             echo "✅ Done."
