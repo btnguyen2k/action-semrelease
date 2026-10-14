@@ -112,11 +112,12 @@ jobs:
             echo "❎ No changes detected after build."
           fi
       - name: Update metadata
+        env:
+          VERSION: ${{ needs.dryrun.outputs.VERSION }}
+          RELEASE_NOTES: ${{ needs.dryrun.outputs.RELEASE_NOTES }}
         run: |
           echo "🕘 Updating metadata..."
           DATE=`date +%Y-%m-%d`
-          VERSION='${{ needs.dryrun.outputs.VERSION }}'
-          RELEASE_NOTES='${{ needs.dryrun.outputs.RELEASE_NOTES }}'
 
           echo "🕘 Updating file ${{ env.FILE_CHANGELOG }}..."
           head -1 ${{ env.FILE_CHANGELOG }} > .temp.md
@@ -154,10 +155,11 @@ jobs:
           branches: ${{ env.BRANCH_TO_RELEASE }}
       - name: Cleanup file .semrelease/this_release
         id: cleanup_release_metadata
+        env:
+          RESULT: ${{ steps.semrelease.outputs.result }}
+          VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
         run: |
-          RESULT='${{ steps.semrelease.outputs.result }}'
           if [ "${RESULT}" == "SUCCESS" ]; then
-            VERSION='${{ steps.semrelease.outputs.releaseVersion }}'
             echo "🕘 Cleaning up file .semrelease/this_release..."
             echo "# This file has been cleaned up post-releasing version ${VERSION}." > .semrelease/this_release
             echo "# Generate its content quickly using the following command:" >> .semrelease/this_release
