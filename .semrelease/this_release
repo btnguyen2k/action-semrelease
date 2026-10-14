@@ -18,3 +18,4 @@
 - patch(release): fail when a release exists without its exact tag
 - BREAKING CHANGE: require opt-in for major-version aliases
 - impr(release): sort messages within each release-note category
+- feat(release): attach current-repository Actions artifacts as unchanged release assets

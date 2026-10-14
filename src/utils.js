@@ -28,6 +28,7 @@ import * as github from '@actions/github'
 import * as core from '@actions/core'
 import fs from 'node:fs'
 import {readGithub} from './github-read.js'
+import {getArtifactOptions} from './artifacts.js'
 
 async function readFileAsLines(filename) {
   return await fs.promises.readFile(filename, {encoding: 'utf8'})
@@ -124,7 +125,7 @@ async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scan
 
 /**
  * Convenience function to construct Option struct from inputs and environment variables.
- * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, isTagOnly: boolean, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
+ * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, isTagOnly: boolean, artifactIds: number[], artifactRunId: number|string, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
  */
 function getOptions() {
   const inputDryRun = 'dry-run'
@@ -142,6 +143,7 @@ function getOptions() {
   const inputPath = 'path'
   const defaultPath = ''
 
+  const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
   return {
     isDryRun: optDryRun(),
     targetSha: core.getInput('target-sha') || github.context.sha,
@@ -149,7 +151,8 @@ function getOptions() {
     isTagMinorRelease: String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true',
     tagPrefix: String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix),
     branches: optBranches(),
-    isTagOnly: String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true',
+    isTagOnly,
+    ...getArtifactOptions(isTagOnly),
     scanPath: String(core.getInput(inputPath) || process.env['SCAN_PATH'] || defaultPath),
   }
 

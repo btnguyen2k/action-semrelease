@@ -2,6 +2,7 @@ import * as core from '@actions/core'
 import * as github from '@actions/github'
 import * as utils from './utils.js'
 import * as rules from './rules.js'
+import {prepareArtifacts, uploadArtifactAsset} from './artifacts.js'
 
 const inputGithubToken = 'github-token'
 const outputResultSkipped = 'SKIPPED'
@@ -72,6 +73,7 @@ async function createRelease(octokit, tagName, releaseNotes, isPrerelease, dryRu
   } else {
     const {data: releaseInfo} = await octokit.rest.repos.createRelease(createReleaseParams)
     core.info(`✅ Release created: ${JSON.stringify(releaseInfo, null, 2)}`)
+    return releaseInfo
   }
 }
 
@@ -209,6 +211,7 @@ async function semrelease() {
     return RESULT_SKIPPED
   }
 
+  const prepared = await prepareArtifacts(octokit, options)
   let stage = `creating exact tag ${tagName}`
   try {
     await createTag(octokit, tagName, options.targetSha, options.isDryRun)
@@ -227,7 +230,15 @@ async function semrelease() {
     const isPrerelease = releaseMeta.release_version.prerelease !== ''
     core.info(`ℹ️ Release notes:\n${releaseMeta.release_notes}`)
     if (!options.isTagOnly) {
-      await createRelease(octokit, tagName, releaseMeta, isPrerelease, options.isDryRun)
+      const release = await createRelease(octokit, tagName, releaseMeta, isPrerelease, options.isDryRun)
+      for (const asset of prepared.assets) {
+        stage = `uploading release asset ${asset.name}`
+        if (options.isDryRun) {
+          core.info(`[DRY-RUN] Upload release asset ${asset.name} (${asset.size} bytes)`)
+        } else {
+          await uploadArtifactAsset(octokit, release, asset)
+        }
+      }
     } else {
       core.info(`⚠️ Tag-only mode enabled, skipped creating release.`)
     }
@@ -235,10 +246,12 @@ async function semrelease() {
     core.warning(
       `Release ${tagName} at ${options.targetSha} failed while ${stage}. `
       + 'Partial changes may remain; no automatic rollback was performed. '
-      + 'Inspect the operation logs, tags, enabled aliases, and release; manually clean up or restore '
+      + 'Inspect the operation logs, tags, enabled aliases, release and uploaded assets; manually clean up or restore '
       + 'only changes from this failed run before retrying. Do not delete pre-existing tags or releases.',
     )
     throw error
+  } finally {
+    await prepared.cleanup()
   }
 
   return {

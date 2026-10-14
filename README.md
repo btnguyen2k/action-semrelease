@@ -179,7 +179,7 @@ The following inputs are accepted:
 
 | Input                         | Required | Default         | Description                                                                   |
 |-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
-| github-token                  | Yes      |                 | Supply `${{ secrets.GITHUB_TOKEN }}` or a PAT via secrets. Requires repository read access and Contents write permission to create tags/releases; dry-run only requires read access. |
+| github-token                  | Yes      |                 | Supply `${{ secrets.GITHUB_TOKEN }}` or a PAT via secrets. Requires repository read access and Contents write permission to create tags/releases; dry-run only requires read access. Attaching artifacts additionally requires Actions read permission, including in dry-run. |
 | dry-run                       | No       | `false`         | If `true`, calculate version/notes without creating tags or releases. API reads and validation still run. A workspace `.semrelease-dry-run` file enables this even when the input is `false`. |
 | target-sha                    | No       | Event SHA       | Commit to release; must be a tip or ancestor of a configured branch. Metadata and tags are pinned to it. The same validation applies to the default event SHA and dry-run. |
 | tag-prefix                    | No       | `'v'`           | Prefix used to find previous versions and name release tags, e.g. `v1.2.3`. |
@@ -187,7 +187,9 @@ The following inputs are accepted:
 | tag-minor-release             | No       | `false`         | If `true`, create or move the minor-version alias, e.g. `v1.2`, in addition to the full-version tag. |
 | branches                      | No       | `'main,master'` | Comma-separated branch names, e.g. `main,release,dev`; semicolons and whitespace also work. Used for target validation, even with file metadata, and history fallback. Missing branches (404/422) warn and are skipped; an empty list, all missing branches, or no branch containing the target causes failure. |
 | path                          | No       | `''`            | Repository-relative file/directory path, e.g. `src`, to filter commits for release notes. Empty means all paths; does not affect branch validation or file metadata. |
-| tag-only                      | No       | `false`         | If `true`, create release tags and enabled version aliases without publishing a GitHub release. |
+| tag-only                      | No       | `false`         | If `true`, create release tags and enabled version aliases without publishing a GitHub release. Artifact inputs are ignored without validation or artifact API calls. |
+| artifact-ids                  | No       | `''`            | Actions artifact IDs from the current repository to attach as release assets. Commas, semicolons and whitespace (including newlines) separate IDs; duplicates are removed. |
+| artifact-run-id               | No       | Current run     | Expected source workflow run for all selected artifacts. Its commit must equal the resolved release target; a different run must have completed successfully. Ignored when no artifact IDs are supplied. |
 
 > **Migrating to v5:** the `auto-mode` and `changelog-file` inputs and their `AUTO_MODE` and `CHANGELOG_FILE` environment variables have been removed.
 
@@ -202,6 +204,52 @@ This Action outputs the following:
 | result         | The result of the Action's run. Possible values are `FAILED`, `SKIPPED`, `SUCCESS`.  |
 | releaseVersion | The releasing version string, e.g. `1.2.3` (`tag-prefix` is not included!)           |
 | releaseNotes   | The release notes.                                                                   |
+
+## Attaching GitHub Actions Artifacts
+
+Only artifacts retrieved through GitHub's API from the **current repository** are accepted; local paths, arbitrary URLs and other repositories are not supported. Supply explicit artifact IDs rather than artifact names or a "latest build" selector.
+
+Each artifact becomes one release asset, using its artifact name and the **exact downloaded bytes**. The action does not extract, compress, rename or otherwise transform the content. Produce a single file with `actions/upload-artifact@v7` and `archive: false` so a package ZIP or installer EXE is uploaded directly, with its filename as the artifact name. Standard archived uploads retain their outer GitHub ZIP unchanged; the action will not unwrap them or add an extension.
+
+For example, after your build has produced `packages\my-package.zip`:
+
+```yaml
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      artifact-id: ${{ steps.package.outputs.artifact-id }}
+    steps:
+      # Checkout and build steps go here.
+      - id: package
+        uses: actions/upload-artifact@v7
+        with:
+          path: packages\my-package.zip
+          archive: false
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: btnguyen2k/action-semrelease@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+```
+
+Multiple IDs can be supplied as `123,456;789` or a multiline YAML string. For another workflow run, set `artifact-run-id` explicitly and select a `target-sha` equal to that producer run's commit. All selected IDs must belong to that run. The action accepts any workflow in the current repository, but rejects fork-origin runs. It validates repository/run membership, the source commit, expiration, SHA-256 digest and downloaded byte count before any tag or release writes. Artifacts without a supported SHA-256 digest are rejected.
+
+The current run may still be in progress; use `needs` to ensure producer jobs have succeeded. Any other source run must be completed with a successful conclusion. These checks establish source membership and byte integrity, not build provenance; workflows and their uploaded contents must be trusted. Artifacts from different runs require separate releases/invocations, not mixed run IDs.
+
+Asset names must start with an ASCII letter, digit, underscore or hyphen, followed only by those characters, dots or hyphens, and must not end with a dot. Duplicate filenames (case-insensitive) fail before downloads. Files must be smaller than 2 GiB each, with at most 10 GiB total per invocation. Files are streamed through temporary storage, uploaded in filename order, and temporary files are removed on success or failure.
+
+Dry-run still downloads and validates artifacts but performs no writes. `tag-only: true` ignores both artifact inputs entirely. If there are no qualifying release notes, or the release already exists with a matching tag, the existing skip behavior remains unchanged: no artifact downloads or uploads occur.
+
+An upload failure fails the action, identifies the affected asset and warns that completed tags, aliases, the release and uploaded assets may remain. Uploads are not retried and nothing is rolled back automatically. Inspect and manually complete or clean up the failed publication; rerunning against an existing release skips rather than repairing missing assets.
 
 ## Customizing Version Numbers and Commit Messages
 

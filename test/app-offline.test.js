@@ -1,6 +1,9 @@
 import {jest} from '@jest/globals'
+import {stat} from 'node:fs/promises'
+import path from 'node:path'
+import {artifactMetadata, artifactRun, artifactDownload} from './artifact-fixtures.js'
 
-const context = {repo: {owner: 'owner', repo: 'repo'}, sha: 'event-sha'}
+const context = {repo: {owner: 'owner', repo: 'repo'}, sha: 'event-sha', runId: 101}
 const inputs = {}
 let octokit
 let savedGithubToken
@@ -73,6 +76,11 @@ beforeEach(() => {
         listCommits: jest.fn().mockResolvedValue({data: [
           {sha: 'target', commit: {message: 'fix: from history'}},
         ]}),
+      },
+      actions: {
+        getWorkflowRun: jest.fn(),
+        getArtifact: jest.fn(),
+        downloadArtifact: jest.fn(),
       },
     },
   }
@@ -737,6 +745,112 @@ test.each(['pinned file', 'history'])('sorts published release notes by category
     owner: 'owner', repo: 'repo', tag_name: 'v1.0.0',
     name: 'Release v1.0.0', body: notes, prerelease: false,
   }]])
+})
+
+describe('release assets from Actions artifacts', () => {
+  let files
+  beforeEach(() => {
+    inputs['artifact-ids'] = '11;12'
+    files = new Map([
+      [11, {name: 'my-package.zip', bytes: Buffer.from('package')}],
+      [12, {name: 'my-app-setup.exe', bytes: Buffer.from([77, 90, 0, 255])}],
+    ])
+    octokit.rest.actions.getWorkflowRun.mockResolvedValue({data: artifactRun()})
+    octokit.rest.actions.getArtifact.mockImplementation(async({artifact_id}) => {
+      const file = files.get(artifact_id)
+      return {data: artifactMetadata(file.bytes, artifact_id, file.name)}
+    })
+    octokit.rest.actions.downloadArtifact.mockImplementation(async({artifact_id}) =>
+      artifactDownload(files.get(artifact_id).bytes))
+    octokit.rest.repos.createRelease.mockResolvedValue({data: {id: 1, upload_url: 'https://uploads.example/assets{?name,label}'}})
+    octokit.rest.repos.uploadReleaseAsset = jest.fn(async params => {
+      const data = []
+      for await (const chunk of params.data) data.push(chunk)
+      return {data: {state: 'uploaded', name: params.name, size: Buffer.concat(data).length}}
+    })
+  })
+
+  test('validates all assets before writes, uploads after release, and cleans files', async() => {
+    expect((await semrelease()).result).toBe('SUCCESS')
+    expect(octokit.rest.actions.downloadArtifact.mock.invocationCallOrder[0])
+      .toBeLessThan(octokit.rest.git.createTag.mock.invocationCallOrder[0])
+    expect(octokit.rest.repos.createRelease.mock.invocationCallOrder[0])
+      .toBeLessThan(octokit.rest.repos.uploadReleaseAsset.mock.invocationCallOrder[0])
+    expect(octokit.rest.repos.uploadReleaseAsset.mock.calls.map(([params]) => params.name))
+      .toEqual(['my-app-setup.exe', 'my-package.zip'])
+    for (const [params] of octokit.rest.repos.uploadReleaseAsset.mock.calls) {
+      await expect(stat(path.dirname(params.data.path))).rejects.toMatchObject({code: 'ENOENT'})
+    }
+  })
+
+  test('dry-run validates/downloads files but does not write', async() => {
+    inputs['dry-run'] = 'true'
+    expect((await semrelease()).result).toBe('SUCCESS')
+    expect(octokit.rest.actions.downloadArtifact).toHaveBeenCalledTimes(2)
+    assertNoWrites()
+    expect(octokit.rest.repos.uploadReleaseAsset).not.toHaveBeenCalled()
+  })
+
+  test('tag-only ignores malformed artifact inputs with no artifact reads', async() => {
+    inputs['tag-only'] = 'true'
+    inputs['artifact-ids'] = 'invalid'
+    inputs['artifact-run-id'] = 'invalid'
+    expect((await semrelease()).result).toBe('SUCCESS')
+    for (const api of Object.values(octokit.rest.actions)) expect(api).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.createRelease).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.uploadReleaseAsset).not.toHaveBeenCalled()
+  })
+
+  test('wrong target commit prevents all publication writes', async() => {
+    octokit.rest.actions.getWorkflowRun.mockResolvedValue({data: {...artifactRun(), head_sha: 'other'}})
+    await expect(semrelease()).rejects.toThrow('does not match release target')
+    assertNoWrites()
+    expect(octokit.rest.repos.uploadReleaseAsset).not.toHaveBeenCalled()
+  })
+
+  test('a later artifact download failure prevents all writes', async() => {
+    const download = octokit.rest.actions.downloadArtifact.getMockImplementation()
+    const error = Object.assign(new Error('artifact expired during download'), {status: 410})
+    octokit.rest.actions.downloadArtifact.mockImplementation(async params => {
+      if (params.artifact_id === 12) throw error
+      return download(params)
+    })
+    await expect(semrelease()).rejects.toBe(error)
+    assertNoWrites()
+    expect(octokit.rest.repos.uploadReleaseAsset).not.toHaveBeenCalled()
+  })
+
+  test.each(['no release notes', 'existing release'])('%s skips before downloading artifacts', async mode => {
+    if (mode === 'no release notes') {
+      octokit.rest.repos.getContent.mockResolvedValue(fileResponse('chore: ignored'))
+    } else {
+      octokit.rest.git.getRef.mockResolvedValue({data: {object: {type: 'commit', sha: 'target'}}})
+      octokit.rest.repos.getReleaseByTag.mockResolvedValue({data: {id: 1}})
+    }
+    expect((await semrelease()).result).toBe('SKIPPED')
+    for (const api of Object.values(octokit.rest.actions)) expect(api).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test.each([0, 1])('upload failure at position %s stops subsequent uploads without retry/rollback', async failure => {
+    const error = Object.assign(new Error('upload unavailable'), {status: 503})
+    const upload = octokit.rest.repos.uploadReleaseAsset.getMockImplementation()
+    octokit.rest.repos.uploadReleaseAsset.mockImplementation(async params => {
+      if (params.name === ['my-app-setup.exe', 'my-package.zip'][failure]) throw error
+      return upload(params)
+    })
+    await expect(semrelease()).rejects.toBe(error)
+    await jest.runAllTimersAsync()
+    expect(octokit.rest.repos.uploadReleaseAsset).toHaveBeenCalledTimes(failure + 1)
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.git.deleteRef).not.toHaveBeenCalled()
+    expect(warning).toHaveBeenCalledTimes(1)
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining(`uploading release asset ${['my-app-setup.exe', 'my-package.zip'][failure]}`))
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('no automatic rollback'))
+    for (const [params] of octokit.rest.repos.uploadReleaseAsset.mock.calls) {
+      await expect(stat(path.dirname(params.data.path))).rejects.toMatchObject({code: 'ENOENT'})
+    }
+  })
 })
 
 test('invalid forced version fails before writing tags', async() => {

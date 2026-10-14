@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 jest.unstable_mockModule('@actions/github', () => ({
-  context: {repo: {owner: 'owner', repo: 'repo'}, sha: 'event-sha'},
+  context: {repo: {owner: 'owner', repo: 'repo'}, sha: 'event-sha', runId: 101},
 }))
 
 const {getOptions} = await import('../src/utils.js')
@@ -14,6 +14,7 @@ const environmentNames = [
   'INPUT_TAG-MINOR-RELEASE', 'INPUT_TAG-PREFIX', 'INPUT_BRANCHES',
   'INPUT_TAG-ONLY', 'INPUT_PATH', 'DRY_RUN', 'TAG_PREFIX', 'BRANCHES',
   'TAG_ONLY', 'SCAN_PATH',
+  'INPUT_ARTIFACT-IDS', 'INPUT_ARTIFACT-RUN-ID',
 ]
 let savedEnvironment
 let savedDirectory
@@ -111,6 +112,20 @@ describe('branch-list parsing', () => {
 
 test('ALIAS-01: both version aliases default to disabled', () => {
   expect(getOptions()).toMatchObject({isTagMajorRelease: false, isTagMinorRelease: false})
+})
+
+test('artifact inputs use smart separators and default to the current run', () => {
+  process.env['INPUT_ARTIFACT-IDS'] = ' 11,12;13\n14 11 '
+  expect(getOptions()).toMatchObject({artifactIds: [11, 12, 13, 14], artifactRunId: 101})
+  process.env['INPUT_ARTIFACT-RUN-ID'] = ' 202 '
+  expect(getOptions().artifactRunId).toBe(202)
+})
+
+test('tag-only ignores invalid artifact inputs', () => {
+  process.env['INPUT_TAG-ONLY'] = 'true'
+  process.env['INPUT_ARTIFACT-IDS'] = 'invalid'
+  process.env['INPUT_ARTIFACT-RUN-ID'] = 'invalid'
+  expect(getOptions()).toMatchObject({artifactIds: [], artifactRunId: ''})
 })
 
 describe('dry-run marker', () => {

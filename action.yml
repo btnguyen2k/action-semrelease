@@ -6,7 +6,7 @@ branding:
   color: 'red'
 inputs:
   github-token:
-    description: 'GitHub token or PAT with repository access and Contents write permission to publish'
+    description: 'Token with Contents write permission to publish, plus Actions read permission when attaching artifacts'
     required: true
   dry-run:
     description: 'Set to true to calculate version and notes without creating tags or releases'
@@ -37,9 +37,17 @@ inputs:
     required: false
     default: ''
   tag-only:
-    description: 'Set to true to create tags without publishing a GitHub release'
+    description: 'Set to true to create tags without publishing a GitHub release; artifact inputs are ignored'
     required: false
     default: 'false'
+  artifact-ids:
+    description: 'Current-repository Actions artifact IDs to attach as-is; separated by commas, semicolons or whitespace'
+    required: false
+    default: ''
+  artifact-run-id:
+    description: 'Expected source run for artifacts; defaults to the current run and must match the release target'
+    required: false
+    default: ''
 outputs:
   releaseVersion:
     description: 'The released version string'
