@@ -614,6 +614,44 @@ test('enabled aliases are recreated separately from the exact tag', async() => {
   for (const [params] of octokit.rest.git.createTag.mock.calls) expect(params.object).toBe('target')
 })
 
+test.each(['lightweight', 'annotated'])('ALIAS-03: reuses %s exact tag while refreshing enabled aliases', async type => {
+  inputs['tag-major-release'] = 'true'
+  inputs['tag-minor-release'] = 'true'
+  octokit.rest.git.getRef.mockResolvedValue({data: {object: type === 'annotated'
+    ? {type: 'tag', sha: 'existing-annotation'}
+    : {type: 'commit', sha: 'target'}}})
+  octokit.rest.git.getTag.mockResolvedValue({data: {object: {type: 'commit', sha: 'target'}}})
+  octokit.rest.git.createTag.mockImplementation(async({tag}) => ({
+    data: {sha: `object-${tag}`},
+  }))
+
+  const result = await semrelease()
+
+  expect(result).toEqual({
+    result: 'SUCCESS', releaseVersion: '1.2.3',
+    releaseNotes: '### Fixed/Improvements\n\n- Fix: issue',
+  })
+  expect(octokit.rest.git.createTag.mock.calls.map(([params]) => ({
+    tag: params.tag, object: params.object, type: params.type,
+  }))).toEqual([
+    {tag: 'v1', object: 'target', type: 'commit'},
+    {tag: 'v1.2', object: 'target', type: 'commit'},
+  ])
+  expect(octokit.rest.git.deleteRef.mock.calls.map(([params]) => params.ref))
+    .toEqual(['tags/v1', 'tags/v1.2'])
+  expect(octokit.rest.git.createRef.mock.calls.map(([params]) => ({
+    ref: params.ref, sha: params.sha,
+  }))).toEqual([
+    {ref: 'refs/tags/v1', sha: 'object-v1'},
+    {ref: 'refs/tags/v1.2', sha: 'object-v1.2'},
+  ])
+  expect(octokit.rest.repos.createRelease).toHaveBeenCalledTimes(1)
+  expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith({
+    owner: 'owner', repo: 'repo', tag_name: 'v1.2.3',
+    name: 'Release v1.2.3', body: result.releaseNotes, prerelease: false,
+  })
+})
+
 test('dry-run makes no mutation calls even with aliases enabled', async() => {
   inputs['dry-run'] = 'true'
   inputs['tag-major-release'] = 'true'
