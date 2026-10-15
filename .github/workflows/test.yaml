@@ -122,6 +122,10 @@ jobs:
           RELEASE_NOTES: ${{ steps.run-action-default.outputs.releaseNotes }}
         run: |
           printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
+          if [ "$RESULT" != "SUCCESS" ] && [ "$RESULT" != "SKIPPED" ]; then
+            echo "::error::Action result must be SUCCESS or SKIPPED"
+            exit 1
+          fi
           if [ "${RESULT}" == "SUCCESS" ]; then
             cp -f package.json package.json.bak
             sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
@@ -164,6 +168,10 @@ jobs:
           RELEASE_NOTES: ${{ steps.run-action-branches.outputs.releaseNotes }}
         run: |
           printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
+          if [ "$RESULT" != "SUCCESS" ] && [ "$RESULT" != "SKIPPED" ]; then
+            echo "::error::Action result must be SUCCESS or SKIPPED"
+            exit 1
+          fi
           if [ "${RESULT}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
             cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
@@ -215,6 +223,10 @@ jobs:
           RELEASE_NOTES: ${{ steps.run-action-dry-run.outputs.releaseNotes }}
         run: |
           printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
+          if [ "$RESULT" != "SUCCESS" ] && [ "$RESULT" != "SKIPPED" ]; then
+            echo "::error::Action result must be SUCCESS or SKIPPED"
+            exit 1
+          fi
           if [ "${RESULT}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
             cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
