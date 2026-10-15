@@ -24,6 +24,7 @@ jobs:
       target-sha: ${{ steps.capture.outputs.target-sha }}
       action-target-sha: ${{ steps.capture.outputs.action-target-sha }}
       action-branch: ${{ steps.capture.outputs.action-branch }}
+      push-branch: ${{ steps.capture.outputs.push-branch }}
     steps:
       - name: Capture pinned commit SHA
         id: capture
@@ -32,6 +33,7 @@ jobs:
           TARGET_SHA: ${{ inputs.target-sha || github.sha }}
           PR_BASE_SHA: ${{ !inputs.target-sha && github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
           PR_BASE_BRANCH: ${{ !inputs.target-sha && github.event_name == 'pull_request' && github.event.pull_request.base.ref || '' }}
+          PUSH_BRANCH: ${{ !inputs.target-sha && github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name || '' }}
         run: |
           if [[ ! "$TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
             echo "::error::target-sha must be a full 40-character commit SHA"
@@ -45,6 +47,7 @@ jobs:
           fi
           printf 'action-target-sha=%s\n' "$ACTION_TARGET_SHA" >> "$GITHUB_OUTPUT"
           printf 'action-branch=%s\n' "$PR_BASE_BRANCH" >> "$GITHUB_OUTPUT"
+          printf 'push-branch=%s\n' "$PUSH_BRANCH" >> "$GITHUB_OUTPUT"
 
   # lint
   lint:
@@ -68,6 +71,8 @@ jobs:
   units:
     runs-on: ubuntu-latest
     needs: [pin]
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
@@ -84,9 +89,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run test
       - name: Upload coverage reports to Codecov
+        if: ${{ env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v7
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   # test the action itself
   test_non_auto:
@@ -114,7 +118,7 @@ jobs:
           target-sha: ${{ needs.pin.outputs.action-target-sha }}
           dry-run: true
           tag-prefix: vt
-          branches: ${{ needs.pin.outputs.action-branch || 'main, master, release, dev' }}
+          branches: ${{ needs.pin.outputs.action-branch || needs.pin.outputs.push-branch || github.base_ref || github.ref_name }}
       - name: Check output (default branches)
         env:
           RESULT: ${{ steps.run-action-default.outputs.result }}
@@ -159,7 +163,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           target-sha: ${{ needs.pin.outputs.action-target-sha }}
           dry-run: true
-          branches: ${{ needs.pin.outputs.action-branch || 'main, release, dev, not-exists' }}
+          branches: ${{ format('{0}, not-exists', needs.pin.outputs.action-branch || needs.pin.outputs.push-branch || github.base_ref || github.ref_name) }}
           tag-prefix: va
       - name: Check output (branch scan)
         env:
@@ -214,7 +218,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           target-sha: ${{ needs.pin.outputs.action-target-sha }}
           dry-run: true
-          branches: ${{ needs.pin.outputs.action-branch || 'main, release, dev, not-exists' }}
+          branches: ${{ format('{0}, not-exists', needs.pin.outputs.action-branch || needs.pin.outputs.push-branch || github.base_ref || github.ref_name) }}
           tag-prefix: v
       - name: Check output (dry-run)
         env:
