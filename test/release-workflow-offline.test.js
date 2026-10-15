@@ -60,24 +60,39 @@ test('PR target selection is disabled when a caller supplies an explicit SHA', (
   expect(tests).toContain("PR_BASE_BRANCH: ${{ !inputs.target-sha && github.event_name == 'pull_request' && github.event.pull_request.base.ref || '' }}")
   expect(tests.match(/ref: \$\{\{ needs\.pin\.outputs\.target-sha }}/g)).toHaveLength(5)
   expect(tests.match(/target-sha: \$\{\{ needs\.pin\.outputs\.action-target-sha }}/g)).toHaveLength(3)
-  expect(tests.match(/branches: \$\{\{ needs\.pin\.outputs\.action-branch \|\|/g)).toHaveLength(3)
+  expect(tests.match(/branches:.*needs\.pin\.outputs\.action-branch/g)).toHaveLength(3)
 })
 
 test.each([
-  {name: 'PR', base: 'b'.repeat(40), branch: 'feature-base'},
-  {name: 'push', base: '', branch: ''},
-  {name: 'explicit workflow-call SHA', base: '', branch: ''},
-])('pin script separates code and action targets for $name', ({base, branch}) => {
+  {name: 'PR', base: 'b'.repeat(40), branch: 'feature-base', push: ''},
+  {name: 'push', base: '', branch: '', push: 'feature/new-action'},
+  {name: 'explicit workflow-call SHA', base: '', branch: '', push: ''},
+  {name: 'tag push', base: '', branch: '', push: ''},
+])('pin script separates code and action targets for $name', ({base, branch, push}) => {
   const body = tests.split('        run: |\n')[1].split('\n  # lint')[0]
     .split('\n').map(line => line.replace(/^ {10}/, '')).join('\n')
   const sha = 'a'.repeat(40)
   const result = command('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', body], {
-    TARGET_SHA: sha, PR_BASE_SHA: base, PR_BASE_BRANCH: branch, GITHUB_OUTPUT: 'pin-output',
+    TARGET_SHA: sha, PR_BASE_SHA: base, PR_BASE_BRANCH: branch, PUSH_BRANCH: push, GITHUB_OUTPUT: 'pin-output',
   })
   expect(result.status).toBe(0)
   expect(readFileSync(path.join(directory, 'pin-output'), 'utf8')).toBe(
-    `target-sha=${sha}\naction-target-sha=${base || sha}\naction-branch=${branch}\n`,
+    `target-sha=${sha}\naction-target-sha=${base || sha}\naction-branch=${branch}\npush-branch=${push}\n`,
   )
+})
+
+test('all smoke tests select the event branch without hardcoded branch lists', () => {
+  expect(tests).toContain("PUSH_BRANCH: ${{ !inputs.target-sha && github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name || '' }}")
+  expect(tests.match(/branches:.*needs\.pin\.outputs\.push-branch/g)).toHaveLength(3)
+  expect(tests.match(/branches: \$\{\{ needs\.pin\.outputs\.action-branch \|\| needs\.pin\.outputs\.push-branch \|\| github\.base_ref \|\| github\.ref_name }}/g)).toHaveLength(1)
+  expect(tests.match(/branches: \$\{\{ format\('\{0}, not-exists', needs\.pin\.outputs\.action-branch \|\| needs\.pin\.outputs\.push-branch \|\| github\.base_ref \|\| github\.ref_name\) }}/g)).toHaveLength(2)
+  expect(tests).not.toMatch(/branches:.*(?:main,|master,|release,|dev,)/)
+})
+
+test('Codecov checks token availability through the units job environment', () => {
+  const units = tests.split('\n  units:\n')[1].split('\n  # test the action itself')[0]
+  expect(units).toContain("    env:\n      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}")
+  expect(units).toContain("      - name: Upload coverage reports to Codecov\n        if: ${{ env.CODECOV_TOKEN != '' }}")
 })
 
 test('metadata script preserves literal notes and rejects duplicate release sections', () => {
