@@ -47,19 +47,7 @@ jobs:
 
 ## How it works
 
-This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. Messages are sorted within each release-note category using deterministic, case-sensitive lexicographic order after first-letter capitalization; category order is unchanged. The following screenshot illustrates the result:
-
-The version baseline comes from the latest matching GitHub release, falling back to a matching tag, then `0.0.0`. History scanning starts at the release creation date or the tag commit's committer date. A missing tag baseline commit causes an explicit failure.
-
-Historical targets use that same latest baseline, even if it is newer than the target. Qualifying file messages can therefore bump the latest version on an older commit; a forced version overrides the calculated version. History fallback still uses the latest baseline date and may yield no qualifying messages.
-
-An existing release with a matching exact tag is skipped. If the release exists but its exact tag is missing, the action fails (including in dry-run) and requires manual inspection and restoration or cleanup; it does not recreate the tag automatically.
-
-GitHub API reads retry transient network errors, HTTP 500/502/503/504, and rate limits (429 or rate-limited 403), with at most three attempts per request and a 30-second timeout per attempt. Backoff starts at one second and doubles; rate-limit waits honor `Retry-After` and primary-limit reset times, with a one-minute fallback for rate limits without timing headers. Total retry waits are limited to 120 seconds per request; a server delay exceeding the remaining budget causes failure, never an early retry. Other errors fail immediately, except documented not-found fallbacks. Writes are not retried.
-
-Commit, release, and tag pagination fails on page 2 or later after retries are exhausted, rather than using incomplete results. A successful empty page completes pagination normally; a first-page 404 retains the empty-result behavior. An alias deletion returning 422 is ignored only if a read confirms the reference is absent.
-
-Tag creation, alias updates, and release publication are not atomic. A failure stops subsequent operations, fails the action step, and warns which stage failed. No automatic rollback or retry is performed. Inspect the logs and remote state, manually clean up changes introduced by the failed run or restore affected aliases, then retry. Do not delete pre-existing tags/releases blindly; a failed API request may have succeeded remotely before its response was lost. Keep `continue-on-error` disabled so an action failure fails the workflow.
+This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. The following screenshot illustrates the result:
 
 ![Releases and Tags](docs/semrelease-releases-and-tags.png)
 
@@ -179,23 +167,16 @@ The following inputs are accepted:
 
 | Input                         | Required | Default         | Description                                                                   |
 |-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
-| github-token                  | Yes      |                 | Supply `${{ secrets.GITHUB_TOKEN }}` or a PAT via secrets. Requires repository read access and Contents write permission to create tags/releases; dry-run only requires read access. Attaching artifacts additionally requires Actions read permission, including in dry-run. |
-| dry-run                       | No       | `false`         | If `true`, calculate version/notes without creating tags or releases. API reads and validation still run. A workspace `.semrelease-dry-run` file enables this even when the input is `false`. |
-| target-sha                    | No       | Event SHA       | Commit to release; must be a tip or ancestor of a configured branch. Metadata and tags are pinned to it. The same validation applies to the default event SHA and dry-run. |
-| tag-prefix                    | No       | `'v'`           | Prefix used to find previous versions and name release tags, e.g. `v1.2.3`. |
-| tag-major-release             | No       | `false`         | If `true`, create or move the major-version alias, e.g. `v1`, in addition to the full-version tag. |
-| tag-minor-release             | No       | `false`         | If `true`, create or move the minor-version alias, e.g. `v1.2`, in addition to the full-version tag. |
-| branches                      | No       | `'main,master'` | Comma-separated branch names, e.g. `main,release,dev`; semicolons and whitespace also work. Used for target validation, even with file metadata, and history fallback. Missing branches (404/422) warn and are skipped; an empty list, all missing branches, or no branch containing the target causes failure. |
-| path                          | No       | `''`            | Repository-relative file/directory path, e.g. `src`, to filter commits for release notes. Empty means all paths; does not affect branch validation or file metadata. |
-| tag-only                      | No       | `false`         | If `true`, create release tags and enabled version aliases without publishing a GitHub release. Artifact inputs are ignored without validation or artifact API calls. |
-| artifact-ids                  | No       | `''`            | Actions artifact IDs from the current repository to attach as release assets. Commas, semicolons and whitespace (including newlines) separate IDs; duplicates are removed. |
-| artifact-run-id               | No       | Current run     | Expected source workflow run for all selected artifacts. Its commit must equal the resolved release target; a different run must have completed successfully. Ignored when no artifact IDs are supplied. |
+| github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
+| dry-run                       | No       | `false`         | If `true`, the Action will run in dry-run mode.                               |
+| tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
+| tag-major-release             | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                     |
+| tag-minor-release             | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                   |
+| branches                      | No       | `'main,master'` | Comma-separated list of branches to scan for commit messages.                 |
+| path                          | No       | `''`            | Scan and Analyze only commits containing this file path.                      |
 
-> **Migrating to v5:** the `auto-mode` and `changelog-file` inputs and their `AUTO_MODE` and `CHANGELOG_FILE` environment variables have been removed.
-
-Major and minor version aliases are both disabled by default. Set `tag-major-release: true` explicitly to retain the previous default major-alias behavior.
-> Version calculation is always automatic; `RELEASE-NOTES` and `CHANGELOG` files are no longer parsed for release metadata.
-> Remove the obsolete inputs from workflows. To supply commit messages or force a version, use `.semrelease/this_release` as described below.
+> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md), the `auto-mode` and `changelog-file` inputs are deprecated
+> and will be removed in future releases.
 
 This Action outputs the following:
 
@@ -205,64 +186,7 @@ This Action outputs the following:
 | releaseVersion | The releasing version string, e.g. `1.2.3` (`tag-prefix` is not included!)           |
 | releaseNotes   | The release notes.                                                                   |
 
-## Attaching GitHub Actions Artifacts
-
-Only artifacts retrieved through GitHub's API from the **current repository** are accepted; local paths, arbitrary URLs and other repositories are not supported. Supply explicit artifact IDs rather than artifact names or a "latest build" selector.
-
-Each artifact becomes one release asset, using its artifact name and the **exact downloaded bytes**. The action does not extract, compress, rename or otherwise transform the content. Produce a single file with `actions/upload-artifact@v7` and `archive: false` so a package ZIP or installer EXE is uploaded directly, with its filename as the artifact name. Standard archived uploads retain their outer GitHub ZIP unchanged; the action will not unwrap them or add an extension.
-
-For example, after your build has produced `packages\my-package.zip`:
-
-```yaml
-jobs:
-  build:
-    runs-on: windows-latest
-    outputs:
-      artifact-id: ${{ steps.package.outputs.artifact-id }}
-    steps:
-      # Checkout and build steps go here.
-      - id: package
-        uses: actions/upload-artifact@v7
-        with:
-          path: packages\my-package.zip
-          archive: false
-          if-no-files-found: error
-
-  release:
-    needs: build
-    runs-on: windows-latest
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: btnguyen2k/action-semrelease@v5
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          artifact-ids: ${{ needs.build.outputs.artifact-id }}
-```
-
-Multiple IDs can be supplied as `123,456;789` or a multiline YAML string. For another workflow run, set `artifact-run-id` explicitly and select a `target-sha` equal to that producer run's commit. All selected IDs must belong to that run. The action accepts any workflow in the current repository, but rejects fork-origin runs. It validates repository/run membership, the source commit, expiration, SHA-256 digest and downloaded byte count before any tag or release writes. Artifacts without a supported SHA-256 digest are rejected.
-
-The current run may still be in progress; use `needs` to ensure producer jobs have succeeded. Any other source run must be completed with a successful conclusion. These checks establish source membership and byte integrity, not build provenance; workflows and their uploaded contents must be trusted. Artifacts from different runs require separate releases/invocations, not mixed run IDs.
-
-Asset names must start with an ASCII letter, digit, underscore or hyphen, followed only by those characters, dots or hyphens, and must not end with a dot. Duplicate filenames (case-insensitive) fail before downloads. Files must be smaller than 2 GiB each, with at most 10 GiB total per invocation. Files are streamed through temporary storage, uploaded in filename order, and temporary files are removed on success or failure.
-
-Dry-run still downloads and validates artifacts but performs no writes. `tag-only: true` ignores both artifact inputs entirely. If there are no qualifying release notes, or the release already exists with a matching tag, the existing skip behavior remains unchanged: no artifact downloads or uploads occur.
-
-An upload failure fails the action, identifies the affected asset and warns that completed tags, aliases, the release and uploaded assets may remain. Uploads are not retried and nothing is rolled back automatically. Inspect and manually complete or clean up the failed publication; rerunning against an existing release skips rather than repairing missing assets.
-
 ## Customizing Version Numbers and Commit Messages
-
-The action reads `.semrelease/this_release` from GitHub at `target-sha` (or the workflow event SHA), not from uncommitted workspace changes.
-Before reading release metadata, the action resolves configured branch tips once and requires the target commit (including the default event SHA) to be reachable from at least one of them. The target may be a branch tip or an ancestor; sharing an ancestor is not sufficient. Duplicate branch names are resolved only once. Branch lookups returning HTTP 404 or 422 produce a warning and are skipped; an empty branch list or no existing branches causes failure. Other lookup errors and comparison errors propagate.
-
-Branch validation also applies when the metadata file supplies the version and release notes, and is independent of date/path filters. A pull-request merge SHA not reachable from a configured branch fails validation; use a reachable `target-sha` and appropriate `branches` instead.
-
-If the file contains messages, those messages are used exclusively, even if none qualifies for a version bump; in that case the action skips without scanning history. If the file is missing or contains no messages (only comments or version metadata), the action fetches commit logs using the same pinned branch tips, retaining any forced version from the file. Only commits reachable from both the target and configured branches are included, with the existing date and path filters. No qualifying messages means a skipped result, even with a valid forced version.
-Custom versions such as `4` and `4.1` are normalized to `4.0.0` and `4.1.0`. At most one `#!VERSION=<version>` directive is allowed (case-insensitive, with surrounding whitespace accepted). Duplicate directives, empty/malformed directives, and invalid versions fail with file and line information, even when no qualifying messages exist. Ordinary comments and other directives are ignored.
-
-Full version tags are immutable: an existing tag at the target commit is reused, and a tag at another commit causes an error, even if its release already exists.
-Enabled major/minor alias tags are still recreated at the target commit when publishing; the existing skip behavior for an already-published release remains unchanged.
 
 There may be scenarios where you want to customize the version number for a release. For instance, if the current version is `3.4.5` but you prefer the new release to be `6.0.0` instead of `3.4.6` or `3.5.0` or `4.0.0`. Additionally, since commit messages are used to compile the release notes, you might want to customize which commit messages are analyzed and included.
 
@@ -415,10 +339,6 @@ jobs:
 This project is licensed under the MIT License. See the [LICENSE.md](LICENSE.md) file for details.
 
 ## Support and Contribution
-
-This repository's release workflow pins the merged source commit, calculates the release plan, then updates metadata and builds `dist` in one preparation commit. It tests that prepared commit (including the committed bundle without rebuilding it), checks that its release plan is unchanged, and publishes tags at that exact prepared SHA. Developers do not need to commit generated bundles. Preparation/publication use non-force pushes and stop if the release branch advances; a failed run may leave a preparation commit that needs inspection before retrying. Release metadata is cleared only after publication succeeds.
-
-For pull-request tests, checkout, lint, unit tests and builds use the PR's synthetic merge commit. The built action's live dry-run smoke tests analyze the PR base SHA on its base branch instead, satisfying release-target ancestry validation without excluding the proposed implementation from testing. These smoke tests analyze base metadata, not PR metadata. An explicit reusable-workflow `target-sha` overrides this PR-specific selection and remains the target for both code and action tests.
 
 Feel free to create [pull requests](https://github.com/btnguyen2k/action-semrelease/pulls) or [issues](https://github.com/btnguyen2k/action-semrelease/issues) to report bugs or suggest new features.
 Please search the existing issues before filing new ones to avoid duplicates. For new issues, file your bug or feature request as a new issue.

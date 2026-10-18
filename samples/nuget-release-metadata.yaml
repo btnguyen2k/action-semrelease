@@ -1,0 +1,205 @@
+# Tests a .NET library and publishes to NuGet.org plus a GitHub release.
+# Copy with nuget-ci.yaml to .github/workflows; choose this OR nuget-release.yaml.
+# Set PACKAGE_PROJECT below to your packable project; adapt the SDK version as needed.
+# On nuget.org > Trusted Publishing, add a GitHub policy for your owner/repo and
+# filename nuget-release-metadata.yaml (no path). Scope it to the package IDs you publish.
+# Allow new packages/versions as needed; leave Environment blank for this sample.
+# Set repository secret NUGET_USER to your NuGet.org profile name, not your email.
+# NuGet/login exchanges OIDC for a 1-hour key; no long-lived API-key secret is needed.
+# Pending policies need a publish within their 7-day activation window, or a restart.
+# Setup reference: https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
+# Pushes the .nupkg directly to NuGet.org; no GitHub artifact upload is needed.
+# Commit .semrelease/this_release in the PR, for example:
+#   #!VERSION=2.0.0
+#   feat(api): add batch operations
+# Optional VERSION sets the version; otherwise example prefixes determine the bump:
+# breaking change: = major, feat: = minor, fix: = patch.
+# File messages replace history; if none qualify, skip without history fallback.
+# Without file messages, scan history and retain VERSION; no matches means skip.
+# Read at the pinned SHA; after NuGet publication, reset to comments in a separate commit.
+# GITHUB_TOKEN must be allowed to push cleanup commits to RELEASE_BRANCH.
+name: NuGet release with metadata
+env:
+  RELEASE_BRANCH: release
+  PACKAGE_PROJECT: src/MyLibrary/MyLibrary.csproj
+# Triggered when a PR to the release branch is closed; unmerged PRs skip all jobs.
+on:
+  pull_request:
+    types: [closed]
+    # Keep in sync with RELEASE_BRANCH; trigger filters cannot use env expressions.
+    branches: [release]
+concurrency:
+  group: nuget-release
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  # Pin the merged commit once for CI and publication.
+  pin:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      target-sha: ${{ steps.capture.outputs.target-sha }}
+    steps:
+      - name: Capture pinned commit SHA
+        id: capture
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::target-sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          printf 'target-sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+  # Re-test that SHA and calculate the version without creating tags/releases.
+  ci:
+    needs: pin
+    uses: ./.github/workflows/nuget-ci.yaml
+    with:
+      target-sha: ${{ needs.pin.outputs.target-sha }}
+  # Publish only a SUCCESS preview; SKIPPED or failed CI stops the release chain.
+  release:
+    needs: [pin, ci]
+    if: needs.ci.outputs.result == 'SUCCESS'
+    runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.status.outputs.published }}
+      release-version: ${{ steps.publish.outputs.releaseVersion }}
+      release-notes: ${{ steps.publish.outputs.releaseNotes }}
+    # Contents write publishes/cleans metadata; OIDC authorizes NuGet login.
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish GitHub release
+        id: publish
+        uses: btnguyen2k/action-semrelease@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: ${{ env.DRY_RUN || 'false' }}
+          target-sha: ${{ needs.pin.outputs.target-sha }}
+          branches: ${{ env.RELEASE_BRANCH }}
+      # A dry run can return SUCCESS, but must not push, clean metadata, or create a PR.
+      - name: Record publication status
+        id: status
+        if: steps.publish.outputs.result == 'SUCCESS'
+        shell: bash
+        run: |
+          DRY_RUN_VALUE="${DRY_RUN:-false}"
+          if [[ "${DRY_RUN_VALUE,,}" =~ ^[[:space:]]*true[[:space:]]*$ ]] || [ -e .semrelease-dry-run ]; then
+            echo "::notice::Dry run: skipping post-release changes"
+            echo 'published=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'published=true' >> "$GITHUB_OUTPUT"
+          fi
+      # Use the actual release version; pack builds/restores without editing the project.
+      # Private restore sources need separate read-only credentials here and in CI.
+      - name: Pack NuGet package
+        id: package
+        if: steps.status.outputs.published == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.publish.outputs.releaseVersion }}
+        run: |
+          PACKAGE_DIR="$(mktemp -d "$RUNNER_TEMP/nuget-packages.XXXXXX")"
+          dotnet pack "$PACKAGE_PROJECT" --configuration Release \
+            -p:Version="$VERSION" -p:PackageVersion="$VERSION" --output "$PACKAGE_DIR"
+          shopt -s nullglob
+          PACKAGES=("$PACKAGE_DIR"/*.nupkg)
+          if [ "${#PACKAGES[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .nupkg; found ${#PACKAGES[@]}"
+            exit 1
+          fi
+          printf 'package-path=%s\n' "${PACKAGES[0]}" >> "$GITHUB_OUTPUT"
+      # Unlike npm, NuGet needs this explicit exchange. Request the 1-hour key after packing.
+      - name: Log in to NuGet.org using OIDC
+        id: login
+        if: steps.status.outputs.published == 'true'
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      # Do not skip duplicates: a version conflict must fail, not report success.
+      - name: Publish to NuGet.org
+        if: steps.status.outputs.published == 'true'
+        shell: bash
+        env:
+          PACKAGE_PATH: ${{ steps.package.outputs.package-path }}
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push "$PACKAGE_PATH" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json
+      # Keep the tag on the tested commit; cleanup is a separate, non-forced push.
+      - name: Cleanup file .semrelease/this_release
+        if: steps.status.outputs.published == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.publish.outputs.releaseVersion }}
+        run: |
+          if [ ! -f .semrelease/this_release ]; then
+            echo "::notice::No .semrelease/this_release file to clean up"
+            exit 0
+          fi
+          printf '# Cleared after releasing version %s.\n' "$VERSION" > .semrelease/this_release
+          printf '# Add messages for the next release here.\n' >> .semrelease/this_release
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- .semrelease/this_release
+          if git diff --cached --quiet -- .semrelease/this_release; then
+            echo "::notice::Release metadata is already clean"
+          else
+            git commit -m "Cleanup file .semrelease/this_release post releasing version ${VERSION}" -- .semrelease/this_release
+            git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
+          fi
+      - name: Report partial release failure
+        if: failure()
+        run: |
+          echo "::warning::Release workflow failed; GitHub or NuGet publication may already have succeeded. Inspect both and finish missing publication/cleanup manually; do not rerun blindly or undo a successful publication."
+  # Wait for both publications and metadata cleanup; open a PR, never auto-merge.
+  mergeToMain:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    # Repository Actions settings must allow creating pull requests.
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Create release-to-main PR
+        uses: actions/github-script@v9
+        env:
+          VERSION: ${{ needs.release.outputs.release-version }}
+          RELEASE_NOTES: ${{ needs.release.outputs.release-notes }}
+        with:
+          script: |
+            const {owner, repo} = context.repo
+            const {data: existing} = await github.rest.pulls.list({
+              owner, repo,
+              state: 'open',
+              head: `${owner}:${process.env.RELEASE_BRANCH}`,
+              base: 'main',
+              per_page: 1,
+            })
+            if (existing.length) {
+              core.info(`Release-to-main PR already exists: ${existing[0].html_url}`)
+              return
+            }
+            const {data: pr} = await github.rest.pulls.create({
+              owner, repo,
+              title: `Merge to main after releasing version ${process.env.VERSION}`,
+              body: process.env.RELEASE_NOTES,
+              head: process.env.RELEASE_BRANCH,
+              base: 'main',
+              maintainer_can_modify: true,
+            })
+            core.info(`Created release-to-main PR: ${pr.html_url}`)
+      - name: Report post-release PR failure
+        if: failure()
+        run: |
+          echo "::warning::Post-release PR creation failed. Inspect existing release-to-main PRs and retry only this job; do not rerun or undo publication."
