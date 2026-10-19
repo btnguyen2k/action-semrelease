@@ -27,22 +27,21 @@ jobs:
           node-version: 'lts/*'
       - name: Release
         id: release
-        uses: btnguyen2k/action-semrelease@v3
+        uses: btnguyen2k/action-semrelease@v5
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   post-release:
     runs-on: ubuntu-latest
     needs: [release]
+    env:
+      RESULT: ${{ needs.release.outputs.RESULT }}
+      VERSION: ${{ needs.release.outputs.VERSION }}
+      RELEASE_NOTES: ${{ needs.release.outputs.RELEASE_NOTES }}
     steps:
       - name: Print release result
         run: |
-          RESULT='${{ needs.release.outputs.RESULT }}'
-          VERSION='${{ needs.release.outputs.VERSION }}'
-          RELEASE_NOTES='${{ needs.release.outputs.RELEASE_NOTES }}'
-          echo "- RESULT: ${RESULT}"
-          echo "- VERSION: ${VERSION}"
-          echo "- RELEASE_NOTES: ${RELEASE_NOTES}"
+          printf 'Result: %s\nVersion: %s\nRelease notes:\n%s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
 ```
 
 ## How it works
@@ -180,7 +179,7 @@ Checks apply to the selected repository commit messages or `.semrelease/this_rel
 Inputs are supplied via the `with` block. For example:
 
 ```yaml
-uses: btnguyen2k/action-semrelease@v3
+uses: btnguyen2k/action-semrelease@v5
 with:
   github-token: ${{ secrets.GITHUB_TOKEN }}
   dry-run: true
@@ -261,7 +260,7 @@ jobs:
       # ...
       - name: SemRelease
         id: semrelease
-        uses: btnguyen2k/action-semrelease@v4
+        uses: btnguyen2k/action-semrelease@v5
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           branches: ${{ env.BRANCH_TO_RELEASE }}
