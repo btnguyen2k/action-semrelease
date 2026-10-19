@@ -1011,6 +1011,44 @@ test('STYLE-02: strict metadata checks ignore comments, directives and supported
   expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
 })
 
+describe.each(['pinned file', 'pinned history'])('marker normalization from %s', source => {
+  test.each(['+ ', ' \t-+= '])('normalizes %j before type-based bumping and release-note generation', async prefix => {
+    inputs['style-check'] = 'true'
+    const message = 'fix(parser+): preserve C++ when the old API is removed'
+    setReleaseMessages(source, [`${prefix}${message}`])
+    const releaseNotes = '### Fixed/Improvements\n\n- Fix(parser+): preserve C++ when the old API is removed'
+
+    expect(await semrelease()).toEqual({
+      result: 'SUCCESS', releaseVersion: '0.0.1', releaseNotes,
+    })
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith(expect.objectContaining({
+      tag_name: 'v0.0.1', body: releaseNotes,
+    }))
+    expect(warning).not.toHaveBeenCalled()
+  })
+})
+
+test('marker normalization: strict metadata still rejects trailing summary whitespace', async() => {
+  inputs['style-check'] = 'true'
+  setReleaseMessages('pinned file', ['+ fix: repair the parser '])
+
+  await expect(semrelease()).rejects.toThrow('Commit message style check failed')
+  assertNoWrites()
+})
+
+test('marker normalization: marker-only metadata falls back to history while retaining its forced version', async() => {
+  octokit.rest.repos.getContent.mockResolvedValue(fileResponse(
+    '#!VERSION=4.1\n+\n+ # comment\n \t-+= \t',
+  ))
+
+  expect(await semrelease()).toEqual({
+    result: 'SUCCESS',
+    releaseVersion: '4.1.0',
+    releaseNotes: '### Fixed/Improvements\n\n- Fix: from history',
+  })
+  expect(octokit.rest.repos.listCommits).toHaveBeenCalledWith(expect.objectContaining({sha: 'target'}))
+})
+
 test.each([
   'fix: repair the parser\n\nThe old API is now removed.\n\nBREAKING CHANGE: details.',
   'fix: repair the parser\r\n\r\nThe old API is now removed.',

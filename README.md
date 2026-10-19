@@ -14,6 +14,8 @@ Use this Action as a step in your workflow file. For example:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       RESULT: ${{ steps.release.outputs.result }}
       VERSION: ${{ steps.release.outputs.releaseVersion }}
@@ -57,6 +59,8 @@ This Action analyzes commit messages to determine if a new release is needed, an
 A new major version is released when a breaking change is detected in commit messages.
 A new minor version is released when new or deprecated features or refactoring are detected.
 A new patch version is released when only bug fixes, improvements/optimizations, security/dependency updates, or reverts are detected.
+
+Messages from GitHub history and `.semrelease/this_release` are normalized before release parsing: leading whitespace and `-`, `=`, or `+` markers are removed, and surrounding whitespace is trimmed. Markers inside the summary or body are preserved.
 
 For headers starting with `type:` or `type(scope):`, the **type alone** determines the bump and release-note category. For example, `fix: breaking change` produces PATCH; words such as "removed" in its scope, summary, body, or footer cannot promote it to MAJOR. Use a breaking type such as `breaking:` or `breaking change:` for a major release. `refactor:` remains MINOR.
 
@@ -172,7 +176,7 @@ with:
   style-check: true
 ```
 
-Checks apply to the selected repository commit messages or `.semrelease/this_release` entries. Metadata comments, version directives and supported leading bullets (`-` or `=`) are ignored. Types use the existing case-insensitive release rules and aliases, including multiword types such as `breaking change`; scope names have no whitelist. Unknown types (such as `docs` or `chore`) and malformed type/scope headers produce no style warnings or failures, even in strict mode. Legacy bracketed or sentence-style messages are also skipped by the style checker. None of these eligibility checks changes the existing version-bump or release-note rules.
+Checks apply to the selected repository commit messages or `.semrelease/this_release` entries. Metadata comments and version directives are ignored. Leading markers (`-`, `=`, or `+`) are stripped from metadata entries before validation, without trimming summary whitespace. Types use the existing case-insensitive release rules and aliases, including multiword types such as `breaking change`; scope names have no whitelist. Unknown types (such as `docs` or `chore`) and malformed type/scope headers produce no style warnings or failures, even in strict mode. Legacy bracketed or sentence-style messages are also skipped by the style checker. None of these eligibility checks changes the existing version-bump or release-note rules.
 
 ### Inputs and Outputs
 
@@ -189,7 +193,7 @@ The following inputs are accepted:
 
 | Input                         | Required | Default         | Description                                                                   |
 |-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
-| github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
+| github-token                  | Yes      |                 | GITHUB_TOKEN with `contents: write`, plus `actions: read` when attaching Actions artifacts; or a PAT with equivalent permissions. |
 | dry-run                       | No       | `false`         | If `true`, the Action will run in dry-run mode.                               |
 | style-check                   | No       | `false`         | Fail on invalid first-line summaries of recognized types when `true`; otherwise warn. |
 | target-sha                    | No       | Event SHA       | Commit SHA to release and read metadata from; must be reachable from a configured branch. |
@@ -227,7 +231,7 @@ Lines not starting with '#' are commit messages and will be used to analyze and 
 
 - Each line should contain a single commit message only.
 
-= Leading spaces and markers such as `-`, '=', `+`, etc. will be trimmed before analyzing the commit message.
+= Leading whitespace and `-`, `=`, or `+` markers are trimmed before parsing the commit message.
 ```
 
 If the `.semrelease/this_release` file does not exist or contains no commit messages, the Action will fallback to analyzing commit messages from the repository's commits.

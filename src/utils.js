@@ -30,6 +30,8 @@ import fs from 'node:fs'
 import {readGithub} from './github-read.js'
 import {getArtifactOptions} from './artifacts.js'
 
+const reCommitMessagePrefix = /^[\s=+-]*/
+
 async function readFileAsLines(filename) {
   return await fs.promises.readFile(filename, {encoding: 'utf8'})
     .catch(err => {
@@ -49,7 +51,7 @@ async function loadCommitMessagesFromFile(commitLogsFile, lines, onMessage) {
   return await (lines === undefined ? readFileAsLines(commitLogsFile || '.semrelease/this_release') : Promise.resolve(lines))
     .then(commitLogs => commitLogs ? commitLogs
       // Strip metadata bullets before validation, but preserve summary whitespace.
-      .map(line => line.replace(/^[\s=-]*/, ''))
+      .map(line => line.replace(reCommitMessagePrefix, ''))
       .filter(line => line.trim() !== '' && !line.startsWith('#'))
       .map(line => {
         onMessage?.(line)
@@ -123,7 +125,7 @@ async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scan
 
   const messages = [...new Set(commitMessages)].map(message => {
     onMessage?.(message)
-    return message.replace(/^[\s=-]*/, '').trim()
+    return message.replace(reCommitMessagePrefix, '').trim()
   })
   return [...new Set(messages.filter(message => message !== ''))]
 }

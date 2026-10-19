@@ -6,6 +6,15 @@ jest.unstable_mockModule('@actions/github', () => ({
 
 const utils = await import('../src/utils.js')
 
+const commitMessagePrefixes = [
+  {name: 'no marker', prefix: ''},
+  {name: 'whitespace', prefix: ' \t'},
+  {name: 'hyphen', prefix: '- '},
+  {name: 'equals', prefix: '= '},
+  {name: 'plus', prefix: '+ '},
+  {name: 'mixed markers', prefix: ' \t-+= \t'},
+]
+
 beforeEach(() => jest.useFakeTimers({advanceTimers: 1000}))
 afterEach(() => jest.useRealTimers())
 
@@ -110,6 +119,15 @@ describe('readReleaseLinesAtCommit', () => {
       'fix: issue', 'feat: feature',
     ])
     expect(onMessage.mock.calls).toEqual([['fix: issue '], ['feat: feature']])
+  })
+
+  test.each(commitMessagePrefixes)('marker normalization: metadata with $name preserves summary whitespace', async({prefix}) => {
+    const message = 'fix(parser+): preserve 1 + 2 = 3 - 0'
+    const onMessage = jest.fn()
+    const lines = [`${prefix}# comment`, prefix, `${prefix}${message}  `]
+
+    expect(await utils.loadCommitMessagesFromFile('metadata', lines, onMessage)).toEqual([message])
+    expect(onMessage.mock.calls).toEqual([[`${message}  `]])
   })
 
   test('propagates metadata validation errors', async() => {
@@ -377,6 +395,33 @@ describe('pinned commit history', () => {
   function commit(sha, message) {
     return {sha, commit: {message}}
   }
+
+  test.each(commitMessagePrefixes)('marker normalization: history with $name preserves raw validation and deduplicates normalized messages', async({prefix}) => {
+    const octokit = makeOctokit()
+    const message = 'fix(parser+): preserve 1 + 2 = 3 - 0'
+    const rawMessages = [`${prefix}${message}  `, message, prefix]
+    const onMessage = jest.fn()
+    octokit.rest.repos.listCommits.mockResolvedValue({
+      data: rawMessages.map((message, index) => commit(`commit-${index}`, message)),
+    })
+
+    expect(await utils.loadCommitMessagesFromRepo(
+      octokit, {}, ['main'], '', 'target', ['main-tip'], onMessage,
+    )).toEqual([message])
+    expect(onMessage.mock.calls.map(([message]) => message)).toEqual([...new Set(rawMessages)])
+  })
+
+  test('marker normalization preserves markers inside the summary and body', async() => {
+    const octokit = makeOctokit()
+    const message = 'fix: preserve C++ and key=value\n\n+ keep this body marker\n- keep this one\n= keep this too'
+    octokit.rest.repos.listCommits.mockResolvedValue({
+      data: [commit('target', ` \t-+= ${message}  `)],
+    })
+
+    expect(await utils.loadCommitMessagesFromRepo(
+      octokit, {}, ['main'], '', 'target', ['main-tip'],
+    )).toEqual([message])
+  })
 
   test('validates each distinct raw reachable message before normalization', async() => {
     const octokit = makeOctokit()
