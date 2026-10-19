@@ -192,14 +192,19 @@ The following inputs are accepted:
 | github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
 | dry-run                       | No       | `false`         | If `true`, the Action will run in dry-run mode.                               |
 | style-check                   | No       | `false`         | Fail on invalid first-line summaries of recognized types when `true`; otherwise warn. |
+| target-sha                    | No       | Event SHA       | Commit SHA to release and read metadata from; must be reachable from a configured branch. |
 | tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
-| tag-major-release             | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                     |
-| tag-minor-release             | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                   |
+| tag-major-release             | No       | `false`         | If `true`, create or move the major-version alias, e.g. `v1`.                 |
+| tag-minor-release             | No       | `false`         | If `true`, create or move the minor-version alias, e.g. `v1.2`.               |
 | branches                      | No       | `'main,master'` | Comma-separated list of branches to scan for commit messages.                 |
 | path                          | No       | `''`            | Scan and Analyze only commits containing this file path.                      |
+| tag-only                      | No       | `false`         | Create tags without publishing a GitHub release; artifact inputs are ignored. |
+| artifact-ids                  | No       | `''`            | Current-repository Actions artifact IDs to attach unchanged as release assets; separate IDs with commas, semicolons or whitespace. |
+| artifact-run-id               | No       | Current run ID  | Expected run ID for all selected artifacts; must originate from this repository at the target SHA. Other runs must have completed successfully. |
 
-> ⚠️ **Deprecation notice**: beginning with version [v3.4.0](RELEASE-NOTES.md), the `auto-mode` and `changelog-file` inputs are deprecated
-> and will be removed in future releases.
+Full version tags (e.g. `v1.2.3`) are never moved; a conflicting target fails the action. Enabled major/minor aliases can move to the release target.
+
+> ⚠️ **Removed inputs:** `auto-mode` and `changelog-file` are no longer supported.
 
 This Action outputs the following:
 
