@@ -19,6 +19,7 @@ function makeOctokit() {
       repos: {
         getContent: jest.fn(),
         getCommit: jest.fn(),
+        listBranches: jest.fn(),
         listCommits: jest.fn(),
       },
       git: {
@@ -208,6 +209,89 @@ describe('resolveTagCommit', () => {
     octokit.rest.git.getRef.mockResolvedValue({data: {object: {type: 'tag', sha: 'tag'}}})
     octokit.rest.git.getTag.mockRejectedValue(error)
     await expect(utils.resolveTagCommit(octokit, 'v1.0.0')).rejects.toBe(error)
+  })
+})
+
+describe('getAllBranches', () => {
+  const branches = Array.from({length: 4}, (_, index) => ({name: `branch-${index + 1}`}))
+
+  test.each([
+    {name: 'empty', data: []},
+    {name: 'partial', data: branches.slice(0, 2)},
+  ])('uses default parameters and stops after the $name page', async({data}) => {
+    const octokit = makeOctokit()
+    octokit.rest.repos.listBranches.mockResolvedValue({data})
+
+    expect(await utils.getAllBranches(octokit)).toEqual(data)
+    expect(octokit.rest.repos.listBranches).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.repos.listBranches).toHaveBeenCalledWith({
+      owner: 'owner', repo: 'repo', page: 1, per_page: 100,
+    })
+  })
+
+  test.each([
+    {name: 'owner', overrides: {owner: 'other-owner'}, owner: 'other-owner', repo: 'repo'},
+    {name: 'repo', overrides: {repo: 'other-repo'}, owner: 'owner', repo: 'other-repo'},
+  ])('overrides $name while retaining unspecified defaults', async({overrides, owner, repo}) => {
+    const octokit = makeOctokit()
+    octokit.rest.repos.listBranches.mockResolvedValue({data: []})
+
+    expect(await utils.getAllBranches(octokit, overrides)).toEqual([])
+    expect(octokit.rest.repos.listBranches).toHaveBeenCalledTimes(1)
+    expect(octokit.rest.repos.listBranches).toHaveBeenCalledWith({
+      owner, repo, page: 1, per_page: 100,
+    })
+  })
+
+  test.each([
+    {
+      name: 'partial final page', overrides: {per_page: 2},
+      pages: [branches.slice(0, 2), branches.slice(2, 3)],
+      expected: branches.slice(0, 3), pageNumbers: [1, 2],
+    },
+    {
+      name: 'exact page boundary', overrides: {per_page: 2},
+      pages: [branches.slice(0, 2), branches.slice(2), []],
+      expected: branches, pageNumbers: [1, 2, 3],
+    },
+    {
+      name: 'overridden repository and starting page',
+      overrides: {owner: 'other-owner', repo: 'other-repo', page: 3, per_page: 2},
+      pages: [branches.slice(0, 2), branches.slice(2, 3)],
+      expected: branches.slice(0, 3), pageNumbers: [3, 4],
+    },
+  ])('paginates through $name without mutating caller options', async({overrides, pages, expected, pageNumbers}) => {
+    const octokit = makeOctokit()
+    const options = Object.freeze({...overrides})
+    const requests = []
+    octokit.rest.repos.listBranches.mockImplementation(async params => {
+      requests.push({...params})
+      const data = pages[requests.length - 1]
+      if (data === undefined) throw new Error('Unexpected extra branch page request')
+      return {data}
+    })
+
+    expect(await utils.getAllBranches(octokit, options)).toEqual(expected)
+    expect(requests).toEqual(pageNumbers.map(page => ({
+      owner: 'owner', repo: 'repo', ...overrides, page,
+    })))
+    expect(options).toEqual(overrides)
+  })
+
+  describe.each([1, 2])('API failure on page %s', failedPage => {
+    test.each([403, 404])('propagates HTTP %s without returning partial results', async status => {
+      const octokit = makeOctokit()
+      const error = apiError(status)
+      const requests = []
+      octokit.rest.repos.listBranches.mockImplementation(async({page}) => {
+        requests.push(page)
+        if (requests.length >= failedPage) throw error
+        return {data: branches.slice(0, 2)}
+      })
+
+      await expect(utils.getAllBranches(octokit, {per_page: 2})).rejects.toBe(error)
+      expect(requests).toEqual(Array.from({length: failedPage}, (_, index) => index + 1))
+    })
   })
 })
 
