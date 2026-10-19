@@ -15,6 +15,7 @@ const environmentNames = [
   'INPUT_TAG-ONLY', 'INPUT_PATH', 'DRY_RUN', 'TAG_PREFIX', 'BRANCHES',
   'TAG_ONLY', 'SCAN_PATH',
   'INPUT_ARTIFACT-IDS', 'INPUT_ARTIFACT-RUN-ID',
+  'INPUT_STYLE-CHECK',
 ]
 let savedEnvironment
 let savedDirectory
@@ -90,6 +91,27 @@ describe('input precedence and normalization', () => {
       isDryRun: true, isTagMajorRelease: false,
       isTagMinorRelease: true, isTagOnly: true,
     })
+  })
+})
+
+describe('style-check input', () => {
+  test('defaults to warning-only mode', () => {
+    expect(getOptions().styleCheck).toBe(false)
+  })
+
+  test.each([
+    ['true', true],
+    [' TrUe ', true],
+    ['false', false],
+    [' FALSE ', false],
+  ])('parses %s as %s', (input, expected) => {
+    process.env['INPUT_STYLE-CHECK'] = input
+    expect(getOptions().styleCheck).toBe(expected)
+  })
+
+  test.each(['yes', '1', 'invalid'])('rejects invalid boolean %s', input => {
+    process.env['INPUT_STYLE-CHECK'] = input
+    expect(() => getOptions()).toThrow('style-check must be true or false')
   })
 })
 

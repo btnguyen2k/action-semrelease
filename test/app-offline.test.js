@@ -30,6 +30,18 @@ function fileResponse(text) {
   return {data: {type: 'file', encoding: 'base64', content: Buffer.from(text).toString('base64')}}
 }
 
+function setReleaseMessages(source, messages) {
+  if (source === 'pinned file') {
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(messages.join('\n')))
+  } else {
+    octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+    octokit.rest.repos.listCommits.mockResolvedValue({data: messages.map((message, index) => ({
+      sha: index === 0 ? 'target' : `ancestor-${index}`,
+      commit: {message},
+    }))})
+  }
+}
+
 function assertNoWrites() {
   for (const method of ['createTag', 'deleteRef', 'createRef']) {
     expect(octokit.rest.git[method]).not.toHaveBeenCalled()
@@ -882,6 +894,11 @@ describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from
     {name: 'major only', messages: [major], version: '3.0.0'},
     {name: 'minor only', messages: [minor], version: '2.4.0'},
     {name: 'patch only', messages: [patch], version: '2.3.5'},
+    {name: 'deps alias', messages: ['deps: update parser'], version: '2.3.5'},
+    {name: 'revert', messages: ['revert: undo the previous change'], version: '2.3.5'},
+    {name: 'refactor stays minor', messages: ['refactor: simplify parsing'], version: '2.4.0'},
+    {name: 'breaking wording in fix', messages: ['fix: breaking change'], version: '2.3.5'},
+    {name: 'removal wording in fix', messages: ['fix: repair an API that is now removed'], version: '2.3.5'},
     {name: 'major + minor', messages: [minor, major], version: '3.0.0'},
     {name: 'major + patch', messages: [patch, major], version: '3.0.0'},
     {name: 'minor + patch', messages: [patch, minor], version: '2.4.0'},
@@ -890,15 +907,7 @@ describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from
     octokit.rest.repos.listReleases.mockResolvedValue({data: [
       {tag_name: 'v2.3.4', created_at: '2026-01-01T00:00:00Z'},
     ]})
-    if (source === 'pinned file') {
-      octokit.rest.repos.getContent.mockResolvedValue(fileResponse(messages.join('\n')))
-    } else {
-      octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
-      octokit.rest.repos.listCommits.mockResolvedValue({data: messages.map((message, index) => ({
-        sha: index === 0 ? 'target' : `ancestor-${index}`,
-        commit: {message},
-      }))})
-    }
+    setReleaseMessages(source, messages)
 
     const result = await semrelease()
     expect(result).toMatchObject({result: 'SUCCESS', releaseVersion: version})
@@ -923,6 +932,123 @@ describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from
       }))
     }
   })
+})
+
+describe.each(['pinned file', 'pinned history'])('STYLE-01: messages from %s', source => {
+  test.each([undefined, 'false'])('warns for every invalid summary and continues with style-check=%s', async strict => {
+    if (strict !== undefined) inputs['style-check'] = strict
+    setReleaseMessages(source, ['fix: Repair the parser.', 'deps: Update the parser.'])
+    expect(await semrelease()).toMatchObject({result: 'SUCCESS', releaseVersion: '0.0.1'})
+    expect(warning).toHaveBeenCalledTimes(2)
+    for (const [message] of warning.mock.calls) {
+      expect(message).toContain('Commit message style:')
+      expect(message).toContain('capital letter')
+      expect(message).toContain('period')
+    }
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledTimes(1)
+  })
+
+  test.each([
+    'fix: Repair the parser.',
+    'fix: repair the parser ',
+    'fix:  repair the parser',
+    'fix:',
+    'fix:\trepair the parser',
+    'refactor: Simplify parsing.',
+    'deprecate(api): Deprecate the parser.',
+  ])('strict mode rejects %s before any write', async message => {
+    inputs['style-check'] = 'true'
+    setReleaseMessages(source, ['fix: a valid summary', message])
+    await expect(semrelease()).rejects.toThrow('Commit message style check failed')
+    expect(octokit.rest.git.getRef).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test('valid strict-mode messages publish without warnings', async() => {
+    inputs['style-check'] = 'true'
+    setReleaseMessages(source, ['deps(dev): update parser', 'revert: undo the previous change'])
+    expect(await semrelease()).toMatchObject({result: 'SUCCESS', releaseVersion: '0.0.1'})
+    expect(warning).not.toHaveBeenCalled()
+  })
+
+  test.each(['false', 'true'])('invalid headers are skipped by style-check=%s without changing release rules', async strict => {
+    inputs['style-check'] = strict
+    setReleaseMessages(source, [
+      'fix: a valid summary',
+      'unsupported(api): Invalid summary.',
+      'chore(CI): Refresh configuration.',
+      'fix(): Repair the parser.',
+      'fix( api): Repair the parser.',
+      'fix(api ): Repair the parser.',
+      'fix extra: Repair the parser.',
+      '[fix]: Repair the parser.',
+      'unrecognized message',
+      '',
+    ])
+    const result = await semrelease()
+    expect(result).toMatchObject({result: 'SUCCESS', releaseVersion: '0.0.1'})
+    expect(result.releaseNotes).toContain('- [fix]: Repair the parser.')
+    expect(warning).not.toHaveBeenCalled()
+  })
+
+  test.each(['false', 'true'])('non-bumping types skip without style warnings or history fallback in style-check=%s', async strict => {
+    inputs['style-check'] = strict
+    setReleaseMessages(source, ['docs: Explain why the API is no longer supported.'])
+    expect((await semrelease()).result).toBe('SKIPPED')
+    expect(warning).not.toHaveBeenCalled()
+    if (source === 'pinned file') expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+})
+
+test('STYLE-02: strict metadata checks ignore comments, directives and supported bullets', async() => {
+  inputs['style-check'] = 'true'
+  octokit.rest.repos.getContent.mockResolvedValue(fileResponse(
+    '# Release details.\n#!VERSION=4.1\n\n- fix: repair the parser\n= deps: update the parser',
+  ))
+  expect(await semrelease()).toMatchObject({result: 'SUCCESS', releaseVersion: '4.1.0'})
+  expect(warning).not.toHaveBeenCalled()
+  expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+})
+
+test.each([
+  'fix: repair the parser\n\nThe old API is now removed.\n\nBREAKING CHANGE: details.',
+  'fix: repair the parser\r\n\r\nThe old API is now removed.',
+  'fix: repair the parser\nThe old API is now removed.',
+  'fix: repair the parser\r\nThe old API is now removed.',
+  'fix: repair the\nparser',
+])('STYLE-03: only the first-line summary is checked, not body content or formatting: %s', async message => {
+  inputs['style-check'] = 'true'
+  setReleaseMessages('pinned history', [message])
+  const result = await semrelease()
+  expect(result).toMatchObject({
+    result: 'SUCCESS', releaseVersion: '0.0.1',
+    releaseNotes: `### Fixed/Improvements\n\n- ${message.charAt(0).toUpperCase()}${message.slice(1)}`,
+  })
+  expect(warning).not.toHaveBeenCalled()
+})
+
+test.each(['fix:\n\nrepair the parser', 'fix: \r\nrepair the parser'])(
+  'STYLE-03: body content cannot supply an empty first-line summary: %s', async message => {
+    inputs['style-check'] = 'true'
+    setReleaseMessages('pinned history', [message])
+    await expect(semrelease()).rejects.toThrow('Commit message style check failed')
+    assertNoWrites()
+  },
+)
+
+test('STYLE-03: invalid raw history headers are ignored by style-check before normalization', async() => {
+  inputs['style-check'] = 'true'
+  setReleaseMessages('pinned history', ['fix: a valid summary', ' fix: Repair the parser.', ''])
+  expect(await semrelease()).toMatchObject({result: 'SUCCESS', releaseVersion: '0.0.1'})
+  expect(warning).not.toHaveBeenCalled()
+})
+
+test('STYLE-03: warnings identify the header and reasons without quoting the body', async() => {
+  setReleaseMessages('pinned history', ['fix: Repair the parser.\n\nDo not include this body in the warning.'])
+  expect((await semrelease()).result).toBe('SUCCESS')
+  expect(warning).toHaveBeenCalledWith(expect.stringContaining('"fix: Repair the parser."'))
+  expect(warning.mock.calls[0][0]).not.toContain('Do not include this body')
 })
 
 test.each(['', '# comment', '#!VERSION=4.1'])(

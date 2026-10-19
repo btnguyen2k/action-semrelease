@@ -105,17 +105,25 @@ async function computeReleaseMeta(octokit, options) {
   }
 
   const commitLogsFile = '.semrelease/this_release'
+  const checkStyle = message => {
+    const issues = rules.checkCommitMessageStyle(message)
+    if (issues.length === 0) return
+    const header = message.split(/\r\n?|\n/, 1)[0]
+    const diagnostic = `${JSON.stringify(header)}: ${issues.join('; ')}`
+    if (options.styleCheck) throw new Error(`Commit message style check failed: ${diagnostic}`)
+    core.warning(`⚠️ Commit message style: ${diagnostic}`)
+  }
 
   // firstly, try to load commit messages from .semrelease/this_release
   core.info(`ℹ️ Try loading commit messages from file ${commitLogsFile}...`)
   const releaseLines = await utils.readReleaseLinesAtCommit(octokit, options.targetSha)
   const releaseOptions = await utils.getReleaseOptionsFromFile(commitLogsFile, releaseLines)
-  let commitMessages = await utils.loadCommitMessagesFromFile(commitLogsFile, releaseLines)
+  let commitMessages = await utils.loadCommitMessagesFromFile(commitLogsFile, releaseLines, checkStyle)
   if (!commitMessages || commitMessages.length === 0) {
     // if the file does not exist or no commit messages found, load commit messages from GitHub repo
     core.info(`ℹ️ File ${commitLogsFile} does not exist or no commit messages found, loading commit messages from repo...`)
     core.info(`🕘 Fetching commits from branch <${options.branches}>...`)
-    commitMessages = await utils.loadCommitMessagesFromRepo(octokit, filterCommits, options.branches, options.scanPath, options.targetSha, options.branchTips)
+    commitMessages = await utils.loadCommitMessagesFromRepo(octokit, filterCommits, options.branches, options.scanPath, options.targetSha, options.branchTips, checkStyle)
   }
 
   const msgsBumpMajor = []

@@ -42,13 +42,15 @@ test.each([
   expect(setFailed).not.toHaveBeenCalled()
 })
 
-test('ENTRY-02: rejection publishes FAILED and fails the step without release outputs', async() => {
-  semrelease.mockRejectedValue(new Error('Target is not reachable'))
+test.each(['Target is not reachable', 'Commit message style check failed'])(
+  'ENTRY-02: rejection publishes FAILED and fails the step without release outputs: %s', async message => {
+    semrelease.mockRejectedValue(new Error(message))
 
-  await runEntry()
+    await runEntry()
 
-  expect(semrelease).toHaveBeenCalledTimes(1)
-  expect(setOutput.mock.calls).toEqual([['result', 'FAILED']])
-  expect(setFailed).toHaveBeenCalledTimes(1)
-  expect(setFailed).toHaveBeenCalledWith('❌ Target is not reachable')
-})
+    expect(semrelease).toHaveBeenCalledTimes(1)
+    expect(setOutput.mock.calls).toEqual([['result', 'FAILED']])
+    expect(setFailed).toHaveBeenCalledTimes(1)
+    expect(setFailed).toHaveBeenCalledWith(`❌ ${message}`)
+  },
+)

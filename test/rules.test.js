@@ -33,6 +33,7 @@ describe('parseCommitMessages', () => {
     {name: 'major + patch', messages: [...majorMessages, ...patchMessages], major: 2, minor: 0, patch: 3},
     {name: 'minor + patch', messages: [...minorMessages, ...patchMessages], major: 0, minor: 2, patch: 3},
     {name: 'major + minor + patch', messages: [...majorMessages, ...minorMessages, ...patchMessages], major: 2, minor: 2, patch: 3},
+    {name: 'legacy headers with bodies', messages: ['Fix\n\nRepair the parser.', '[fix]\n\nRepair the parser.'], major: 0, minor: 0, patch: 2},
     {name: 'patch syntax variants and ignored messages', messages: [
       'Fixing incident #123',
       '+ [FIXED] - Issue #123',
@@ -57,6 +58,172 @@ describe('parseCommitMessages', () => {
     expect(callbackBumpMajor).toHaveBeenCalledTimes(major)
     expect(callbackBumpMinor).toHaveBeenCalledTimes(minor)
     expect(callbackBumpPatch).toHaveBeenCalledTimes(patch)
+  })
+})
+
+describe('dependency and revert aliases', () => {
+  test.each(['dep', 'deps', 'dependency', 'dependencies'].flatMap(type => [
+    `${type}: update parser`,
+    `${type}(dev): update parser`,
+    `[${type}]: update parser`,
+    `(${type}) update parser`,
+  ]))('%s produces PATCH and appears in Others', message => {
+    const major = jest.fn()
+    const minor = jest.fn()
+    const patch = jest.fn()
+    rules.parseCommitMessages([message], major, minor, patch)
+    expect(major).not.toHaveBeenCalled()
+    expect(minor).not.toHaveBeenCalled()
+    expect(patch).toHaveBeenCalledTimes(1)
+    expect(rules.generateReleaseNotes([message])).toBe(
+      `### Others\n\n- ${message.charAt(0).toUpperCase()}${message.slice(1)}`,
+    )
+  })
+
+  test.each([
+    'revert: undo the previous change',
+    'REVERT(api): restore the previous behavior',
+    '[revert]: undo the previous change',
+    '(revert) undo the previous change',
+    'Revert "feat: add cache"',
+    'Reverted the previous change',
+    'Reverting the previous change',
+    'Reverts the previous change',
+    'The previous changes are now reverted',
+  ])('%s produces PATCH and appears in Fixed/Improvements', message => {
+    const major = jest.fn()
+    const minor = jest.fn()
+    const patch = jest.fn()
+    rules.parseCommitMessages([message], major, minor, patch)
+    expect(major).not.toHaveBeenCalled()
+    expect(minor).not.toHaveBeenCalled()
+    expect(patch).toHaveBeenCalledTimes(1)
+    expect(rules.generateReleaseNotes([message])).toBe(
+      `### Fixed/Improvements\n\n- ${message.charAt(0).toUpperCase()}${message.slice(1)}`,
+    )
+  })
+})
+
+describe('type-based header classification', () => {
+  test.each([
+    {message: 'fix: breaking change', bump: 'patch', section: 'Fixed/Improvements'},
+    {message: 'fix:', bump: '', section: ''},
+    {message: 'fix:repair the parser', bump: '', section: ''},
+    {message: 'fix:\n\nExplain the change.', bump: 'patch', section: 'Fixed/Improvements'},
+    {message: 'fix: repair an API that is now removed', bump: 'patch', section: 'Fixed/Improvements'},
+    {message: 'fix: handle a method that is now deprecated', bump: 'patch', section: 'Fixed/Improvements'},
+    {message: 'fix(old API is removed): repair the response', bump: 'patch', section: 'Fixed/Improvements'},
+    {message: 'fix: repair the response\n\nBREAKING CHANGE: the API is now removed', bump: 'patch', section: 'Fixed/Improvements'},
+    {message: 'feat: restore an API that is no longer supported', bump: 'minor', section: 'Added/Refactoring/Deprecation'},
+    {message: 'refactor: simplify an API that is now removed', bump: 'minor', section: 'Added/Refactoring/Deprecation'},
+    {message: 'breaking: fix the request parser', bump: 'major', section: 'Changes'},
+    {message: 'breaking change(api): remove the old parser', bump: 'major', section: 'Changes'},
+    {message: 'new feature: add a parser', bump: 'minor', section: 'Added/Refactoring/Deprecation'},
+    {message: 'docs: explain why the API is no longer available', bump: '', section: ''},
+    {message: 'chore(API is removed): refresh configuration', bump: '', section: ''},
+    {message: 'docs: explain the API\n\nfix: the API is now removed', bump: '', section: ''},
+  ])('$message', ({message, bump, section}) => {
+    const callbacks = {major: jest.fn(), minor: jest.fn(), patch: jest.fn()}
+    rules.parseCommitMessages([message], callbacks.major, callbacks.minor, callbacks.patch)
+    for (const [level, callback] of Object.entries(callbacks)) {
+      expect(callback).toHaveBeenCalledTimes(level === bump ? 1 : 0)
+      if (level === bump) expect(callback).toHaveBeenCalledWith(expect.any(Object), message)
+    }
+    expect(rules.generateReleaseNotes([message])).toBe(section
+      ? `### ${section}\n\n- ${message.charAt(0).toUpperCase()}${message.slice(1)}`
+      : '')
+  })
+})
+
+describe('checkCommitMessageStyle', () => {
+  test.each([
+    'fix: repair the request parser',
+    'feat(api): add a parser',
+    'BREAKING CHANGE: remove the old parser',
+    'new feature: add a parser',
+    'fix(Any Scope): repair the parser',
+    'fix:repair the parser',
+    'fix: repair the parser\nExplain the change.',
+    'fix: repair the parser\r\nExplain the change.',
+    'fix: repair the\nparser',
+    'fix: repair the parser\n\nExplain the change.\n\nBREAKING CHANGE: details.',
+    'fix: repair the parser\r\n\r\nExplain the change.',
+  ])('accepts %s', message => {
+    expect(rules.checkCommitMessageStyle(message)).toEqual([])
+  })
+
+  test.each([
+    {message: 'fix(api):', issue: 'summary must not be empty'},
+    {message: 'fix: ', issue: 'summary must not be empty'},
+    {message: 'fix:\trepair the parser', issue: 'surrounding whitespace'},
+    {message: 'fix:  repair the parser', issue: 'surrounding whitespace'},
+    {message: 'fix: repair the parser ', issue: 'surrounding whitespace'},
+    {message: 'fix: Repair the parser', issue: 'capital letter'},
+    {message: 'fix:Repair the parser', issue: 'capital letter'},
+    {message: 'fix: \u00C9viter les erreurs', issue: 'capital letter'},
+    {message: 'fix: \u01C5ep the parser', issue: 'capital letter'},
+    {message: 'fix: repair the parser.', issue: 'period'},
+    {message: 'fix: Repair the parser.\nvalid body without a blank separator', issue: 'capital letter'},
+  ])('rejects $message: $issue', ({message, issue}) => {
+    expect(rules.checkCommitMessageStyle(message)).toEqual(
+      expect.arrayContaining([expect.stringContaining(issue)]),
+    )
+  })
+
+  test.each([
+    '',
+    ': Invalid summary.',
+    'Fix the parser.',
+    '[fix]: Repair the parser.',
+    '(fix): Repair the parser.',
+    'feat!: Add a parser.',
+    ' fix: Repair the parser.',
+    'fix(): Repair the parser.',
+    'fix( ): Repair the parser.',
+    'fix( api): Repair the parser.',
+    'fix(api ): Repair the parser.',
+    'fix(api(core)): Repair the parser.',
+    'fix(api) : Repair the parser.',
+    'fix(api: Repair the parser.',
+    'custom-type(any-scope): Invalid summary.',
+    'chore(CI): Refresh the workflow.',
+    'docs: Update the documentation.',
+    'build: Update dependencies.',
+    'ci: Update the workflow.',
+    'style: Format the source.',
+    'test: Update the fixtures.',
+    'deprecation: Deprecate the parser.',
+    'fix extra: Repair the parser.',
+    'new feature extra: Add a parser.',
+    'breaking API change: Remove the parser.',
+  ])('ignores unsupported or malformed headers: %s', message => {
+    expect(rules.checkCommitMessageStyle(message)).toEqual([])
+  })
+
+  test.each([
+    'change', 'changed', 'changes', 'break change', 'break changed', 'break changes',
+    'breaking change', 'breaking changed', 'breaking changes', 'break', 'breaking',
+    'rem', 'remove', 'removing', 'removes', 'removed',
+    'ren', 'rename', 'renaming', 'renames', 'renamed',
+    'repl', 'replace', 'replacing', 'replaces', 'replaced',
+    'redesign', 'redesigning', 'redesigned', 'redesigns',
+    'depr', 'deprecate', 'deprecating', 'deprecated', 'deprecates',
+    'refactor', 'refactoring', 'refactored', 'refactors',
+    'add', 'adding', 'added', 'adds', 'feat', 'feature', 'features',
+    'new feat', 'new feature', 'new features',
+    'fix', 'fixing', 'fixed', 'fixes', 'patch', 'patching', 'patched', 'patches',
+    'impr', 'improv', 'improving', 'improves', 'improved', 'improvement',
+    'optimize', 'optimizing', 'optimization', 'optimizes', 'optimized',
+    'perf', 'performance', 'sec', 'security', 'dep', 'deps', 'dependency', 'dependencies',
+    'revert', 'reverting', 'reverted', 'reverts',
+  ].flatMap(type => [
+    `${type}: Invalid summary.`,
+    `${type.toUpperCase()}(Any Scope): Invalid summary.`,
+  ]))('checks the summary for every recognized type and alias: %s', message => {
+    expect(rules.checkCommitMessageStyle(message)).toEqual([
+      'summary must not start with a capital letter',
+      'summary must not end with a period',
+    ])
   })
 })
 

@@ -12,6 +12,10 @@ inputs:
     description: 'Set to true to calculate version and notes without creating tags or releases'
     required: false
     default: 'false'
+  style-check:
+    description: 'Set to true to fail on invalid short summaries of recognized typed commits; false logs warnings and continues'
+    required: false
+    default: 'false'
   target-sha:
     description: 'Commit SHA to release; defaults to the event SHA and must be a tip or ancestor of a configured branch'
     required: false

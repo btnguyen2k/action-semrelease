@@ -1,3 +1,6 @@
+const reCommitPrefix = /^([a-z][a-z0-9-]*(?: [a-z][a-z0-9-]*)*)(?:\(([^()\r\n]+)\))?:(\s*)/i
+const reLineBreak = /\r\n?|\n/
+
 const reBreakingChange = /^[^a-z]*(break(ing)?\s+)?change([ds])?(\([^)]+\)\s*)?:?\s+/i
 const reBreakingChange1 = /^[^a-z]*\[(break(ing)?\s+)?change([ds])?]:?\s+/i
 const reBreakingChange2 = /^[^a-z]*\((break(ing)?\s+)?change([ds])?\):?\s+/i
@@ -56,9 +59,19 @@ const rePerformance2 = /^[^a-z]*\(perf(ormance)?\):?\s+/i
 const reSecurity = /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 const reSecurity1 = /^[^a-z]*\[sec(urity)?]:?\s+/i
 const reSecurity2 = /^[^a-z]*\(sec(urity)?\):?\s+/i
-const reDependency = /^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
-const reDependency1 = /^[^a-z]*\[dep(endenc(y|ies))?]:?\s+/i
-const reDependency2 = /^[^a-z]*\(dep(endenc(y|ies))?\):?\s+/i
+const reDependency = /^[^a-z]*dep(s|endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
+const reDependency1 = /^[^a-z]*\[dep(s|endenc(y|ies))?]:?\s+/i
+const reDependency2 = /^[^a-z]*\(dep(s|endenc(y|ies))?\):?\s+/i
+const reRevert = /^[^a-z]*revert(ing|ed|s)?(\([^)]+\)\s*)?:?\s+/i
+const reRevert1 = /^[^a-z]*\[revert(ing|ed|s)?]:?\s+/i
+const reRevert2 = /^[^a-z]*\(revert(ing|ed|s)?\):?\s+/i
+const reRevert3 = /^[^a-z]*.+(is|are|been)( now)? revert(ed|ing).*/i
+
+const commitTypeRules = [
+  reBreakingChange, reBreakingUpdate, reRemoved, reRenamed, reReplaced, reRedesigned,
+  reDeprecated, reRefactored, reAdded, reNewFeature,
+  reBugFix, rePatch, reImprovement, reOptimization, rePerformance, reSecurity, reDependency, reRevert
+]
 
 const commentRules = {
   'major': [
@@ -125,6 +138,10 @@ const commentRules = {
     {label: 'dependency update', re: reDependency}, // dependency updates
     {label: 'dependency update', re: reDependency1}, // dependency updates
     {label: 'dependency update', re: reDependency2}, // dependency updates
+    {label: 'revert update', re: reRevert},
+    {label: 'revert update', re: reRevert1},
+    {label: 'revert update', re: reRevert2},
+    {label: 'revert update', re: reRevert3},
   ],
 }
 
@@ -159,7 +176,8 @@ const releaseNotesSections = [
       rePatch, rePatch1, rePatch2, rePatch3,
       reImprovement, reImprovement1, reImprovement2, reImprovement3,
       reOptimization, reOptimization1, reOptimization2, reOptimization3,
-      rePerformance, rePerformance1, rePerformance2
+      rePerformance, rePerformance1, rePerformance2,
+      reRevert, reRevert1, reRevert2, reRevert3
     ]
   },
   {
@@ -174,7 +192,39 @@ const releaseNotesSections = [
 
 export {
   parseCommitMessages,
-  generateReleaseNotes
+  generateReleaseNotes,
+  checkCommitMessageStyle
+}
+
+function getRuleMessage(message) {
+  const match = message.match(reCommitPrefix)
+  // Typed headers classify by type, never by words in their scope or summary.
+  return match ? `${match[1]}:${match[3]}` : message
+}
+
+/**
+ * Check only the first-line summary of a recognized typed header.
+ * @param {string} message
+ * @returns {string[]}
+ */
+function checkCommitMessageStyle(message) {
+  const header = message.split(reLineBreak, 1)[0]
+  const match = header.match(reCommitPrefix)
+  if (!match) return []
+  if (match[2] !== undefined && (match[2].trim() === '' || match[2] !== match[2].trim())) {
+    return []
+  }
+  const typePrefix = `${match[1]}: `
+  if (!commitTypeRules.some(rule => rule.exec(typePrefix)?.[0] === typePrefix)) return []
+
+  const summary = (match[3] + header.slice(match[0].length)).replace(/^ /, '')
+  const trimmed = summary.trim()
+  const issues = []
+  if (trimmed === '') issues.push('summary must not be empty')
+  if (summary !== trimmed) issues.push('summary must not have surrounding whitespace')
+  if (/^[\p{Lu}\p{Lt}]/u.test(trimmed)) issues.push('summary must not start with a capital letter')
+  if (trimmed.endsWith('.')) issues.push('summary must not end with a period')
+  return issues
 }
 
 /**
@@ -186,17 +236,18 @@ export {
  */
 function parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMinor, callbackBumpPatch) {
   for (const msg of commitMessages) {
-    let rule = commentRules.major.find(rule => msg.match(rule.re))
+    const ruleMessage = getRuleMessage(msg)
+    let rule = commentRules.major.find(rule => rule.re.test(ruleMessage))
     if (rule) {
       callbackBumpMajor(rule, msg)
     }
 
-    rule = commentRules.minor.find(rule => msg.match(rule.re))
+    rule = commentRules.minor.find(rule => rule.re.test(ruleMessage))
     if (rule) {
       callbackBumpMinor(rule, msg)
     }
 
-    rule = commentRules.patch.find(rule => msg.match(rule.re))
+    rule = commentRules.patch.find(rule => rule.re.test(ruleMessage))
     if (rule) {
       callbackBumpPatch(rule, msg)
     }
@@ -211,7 +262,8 @@ function parseCommitMessages(commitMessages, callbackBumpMajor, callbackBumpMino
 function generateReleaseNotes(commitMessages) {
   const sections = releaseNotesSections.map(section => {
     const messages = commitMessages.filter(message => {
-      return section.rules.some(rule => rule.test(message))
+      const ruleMessage = getRuleMessage(message)
+      return section.rules.some(rule => rule.test(ruleMessage))
     }).map(message => '- ' + message.charAt(0).toUpperCase() + message.slice(1)).sort()
 
     return {title: section.title, messages}

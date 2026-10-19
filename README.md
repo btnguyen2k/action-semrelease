@@ -56,10 +56,12 @@ This Action analyzes commit messages to determine if a new release is needed, an
 ### Versioning rules
 
 A new major version is released when a breaking change is detected in commit messages.
-A new minor version is released when new or deprecated features are detected.
-A new patch version is released when only bug fixes or improvements/optimizations are detected.
+A new minor version is released when new or deprecated features or refactoring are detected.
+A new patch version is released when only bug fixes, improvements/optimizations, security/dependency updates, or reverts are detected.
 
-The following regular expressions are used to detect breaking changes, new features, and bug fixes:
+For headers starting with `type:` or `type(scope):`, the **type alone** determines the bump and release-note category. For example, `fix: breaking change` produces PATCH; words such as "removed" in its scope, summary, body, or footer cannot promote it to MAJOR. Use a breaking type such as `breaking:` or `breaking change:` for a major release. `refactor:` remains MINOR.
+
+The following regular expressions recognize types and legacy unstructured headers:
 
 ```regexp
 A breaking change is detected if any of the following rules match:
@@ -126,9 +128,13 @@ A bug fix/improvement/optimization is detected if any of the following rules mat
 /^[^a-z]*sec(urity)?(\([^)]+\)\s*)?:?\s+/i
 /^[^a-z]*\[sec(urity)?]:?\s+/i
 /^[^a-z]*\(sec(urity)?\):?\s+/i
-/^[^a-z]*dep(endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
-/^[^a-z]*\[dep(endenc(y|ies))?]:?\s+/i
-/^[^a-z]*\(dep(endenc(y|ies))?\):?\s+/i
+/^[^a-z]*dep(s|endenc(y|ies))?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[dep(s|endenc(y|ies))?]:?\s+/i
+/^[^a-z]*\(dep(s|endenc(y|ies))?\):?\s+/i
+/^[^a-z]*revert(ing|ed|s)?(\([^)]+\)\s*)?:?\s+/i
+/^[^a-z]*\[revert(ing|ed|s)?]:?\s+/i
+/^[^a-z]*\(revert(ing|ed|s)?\):?\s+/i
+/^[^a-z]*.+(is|are|been)( now)? revert(ed|ing).*/i
 ```
 
 The following table illustrates how commit messages are mapped to release versions:
@@ -151,6 +157,23 @@ The following table illustrates how commit messages are mapped to release versio
 | Dependency(Dev) - bump `krypto` to v1.2.3                                | New patch release |
 | [SECURITY]: fix potential SQLi security vulnerability in class `DbUtils` | New patch release |
 | Docker image size has been optimized, reduced by half                    | New patch release |
+| `deps: update the parser`                                                | New patch release |
+| `revert: undo the previous change`                                       | New patch release |
+| `fix: breaking change`                                                  | New patch release |
+| `refactor: simplify parsing`                                            | New minor release |
+
+### Commit message style
+
+`style-check` validates **only the short summary on the first line**, after a recognized `type:` or `type(scope):` header. One optional space after the colon is treated as a separator. The summary must be non-empty, have no surrounding whitespace, not start with a capital letter, and not end with a period. All later lines are ignored, including body/footer content and blank-line formatting. These are mechanical checks, not an imperative-tense grammar check.
+
+`style-check` defaults to `false`: violations log warnings and processing continues. Set it to `true` to fail the action before any tags or releases are created:
+
+```yaml
+with:
+  style-check: true
+```
+
+Checks apply to the selected repository commit messages or `.semrelease/this_release` entries. Metadata comments, version directives and supported leading bullets (`-` or `=`) are ignored. Types use the existing case-insensitive release rules and aliases, including multiword types such as `breaking change`; scope names have no whitelist. Unknown types (such as `docs` or `chore`) and malformed type/scope headers produce no style warnings or failures, even in strict mode. Legacy bracketed or sentence-style messages are also skipped by the style checker. None of these eligibility checks changes the existing version-bump or release-note rules.
 
 ### Inputs and Outputs
 
@@ -169,6 +192,7 @@ The following inputs are accepted:
 |-------------------------------|----------|-----------------|-------------------------------------------------------------------------------|
 | github-token                  | Yes      |                 | Either a PAT or GITHUB_TOKEN to access the repository.                        |
 | dry-run                       | No       | `false`         | If `true`, the Action will run in dry-run mode.                               |
+| style-check                   | No       | `false`         | Fail on invalid first-line summaries of recognized types when `true`; otherwise warn. |
 | tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
 | tag-major-release             | No       | `true`          | If `true`, a major release tag will be created, e.g. `v1`                     |
 | tag-minor-release             | No       | `false`         | If `true`, a minor release tag will be created, e.g. `v1.2`                   |

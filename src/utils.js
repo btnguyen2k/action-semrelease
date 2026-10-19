@@ -41,14 +41,20 @@ async function readFileAsLines(filename) {
 /**
  * Loads commit messages from the specified file (default .semrelease/this_release).
  * @param commitLogsFile
+ * @param lines
+ * @param {(message: string) => void} [onMessage] Receives entries before trailing whitespace is trimmed.
  * @returns {Promise<string[]|null>}
  */
-async function loadCommitMessagesFromFile(commitLogsFile, lines) {
+async function loadCommitMessagesFromFile(commitLogsFile, lines, onMessage) {
   return await (lines === undefined ? readFileAsLines(commitLogsFile || '.semrelease/this_release') : Promise.resolve(lines))
     .then(commitLogs => commitLogs ? commitLogs
-      // trim spaces, leading bullet chars (- and =) && remove empty and comment lines
-      .map(line => line.replace(/^[\s=-]*/, '').trim())
-      .filter(line => line !== '' && !line.startsWith('#')) : null)
+      // Strip metadata bullets before validation, but preserve summary whitespace.
+      .map(line => line.replace(/^[\s=-]*/, ''))
+      .filter(line => line.trim() !== '' && !line.startsWith('#'))
+      .map(line => {
+        onMessage?.(line)
+        return line.trim()
+      }) : null)
 }
 
 /**
@@ -94,7 +100,7 @@ async function validateReleaseBranches(octokit, branches, targetSha) {
   throw new Error(`Target commit ${targetSha} is not reachable from any configured branch`)
 }
 
-async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath, targetSha, branchTips) {
+async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath, targetSha, branchTips, onMessage) {
   const commitMessages = []
   const tips = targetSha ? branchTips ?? await resolveBranchTips(octokit, branches) : branches
   let reachable
@@ -111,21 +117,20 @@ async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scan
     const commits = await getAllCommits(octokit, params)
     for (const commit of commits) {
       if (reachable && !reachable.has(commit.sha)) continue
-      // trim spaces, leading bullet chars (- and =)
-      const commitMsg = commit.commit.message.replace(/^[\s=-]*/, '').trim()
-      commitMessages.push(commitMsg)
+      commitMessages.push(commit.commit.message)
     }
   }
 
-  // remove empty and duplicated lines
-  return commitMessages
-    .filter(line => line !== '')
-    .filter((line, index, self) => self.indexOf(line) === index)
+  const messages = [...new Set(commitMessages)].map(message => {
+    onMessage?.(message)
+    return message.replace(/^[\s=-]*/, '').trim()
+  })
+  return [...new Set(messages.filter(message => message !== ''))]
 }
 
 /**
  * Convenience function to construct Option struct from inputs and environment variables.
- * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, isTagOnly: boolean, artifactIds: number[], artifactRunId: number|string, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
+ * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, isTagOnly: boolean, artifactIds: number[], artifactRunId: number|string, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[], styleCheck: boolean}}
  */
 function getOptions() {
   const inputDryRun = 'dry-run'
@@ -146,6 +151,7 @@ function getOptions() {
   const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
   return {
     isDryRun: optDryRun(),
+    styleCheck: optStyleCheck(),
     targetSha: core.getInput('target-sha') || github.context.sha,
     isTagMajorRelease: String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true',
     isTagMinorRelease: String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true',
@@ -170,6 +176,14 @@ function getOptions() {
     const branchesStr = String(core.getInput(inputBranches) || process.env['BRANCHES'] || defaultBranches)
     const branches = branchesStr.trim().split(/[,;\s]+/)
     return branches.filter(branch => branch.trim() !== '')
+  }
+
+  function optStyleCheck() {
+    const value = String(core.getInput('style-check') || 'false').trim().toLowerCase()
+    if (value !== 'true' && value !== 'false') {
+      throw new Error('style-check must be true or false')
+    }
+    return value === 'true'
   }
 }
 

@@ -19,3 +19,6 @@
 - BREAKING CHANGE: require opt-in for major-version aliases
 - impr(release): sort messages within each release-note category
 - feat(release): attach current-repository Actions artifacts as unchanged release assets
+- feat(release): add style-check input with warning and failure modes
+- feat(rules): recognize deps and revert as patch release types
+- fix(rules): use header types for version bumps and release-note grouping

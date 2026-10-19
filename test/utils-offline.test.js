@@ -101,6 +101,22 @@ describe('readReleaseLinesAtCommit', () => {
     expect(await utils.loadCommitMessagesFromFile('does-not-exist', null)).toBeNull()
     expect(await utils.getReleaseOptionsFromFile('does-not-exist', null)).toEqual({})
   })
+
+  test('validates metadata entries after stripping bullets but before trimming summaries', async() => {
+    const onMessage = jest.fn()
+    const lines = ['# comment ', '#!VERSION=4.1', ' - fix: issue ', '', '= feat: feature']
+    expect(await utils.loadCommitMessagesFromFile('metadata', lines, onMessage)).toEqual([
+      'fix: issue', 'feat: feature',
+    ])
+    expect(onMessage.mock.calls).toEqual([['fix: issue '], ['feat: feature']])
+  })
+
+  test('propagates metadata validation errors', async() => {
+    const error = new Error('Invalid summary')
+    await expect(utils.loadCommitMessagesFromFile('metadata', ['fix: Issue'], () => {
+      throw error
+    })).rejects.toBe(error)
+  })
 })
 
 describe('META-02: version directives', () => {
@@ -277,6 +293,19 @@ describe('pinned commit history', () => {
   function commit(sha, message) {
     return {sha, commit: {message}}
   }
+
+  test('validates each distinct raw reachable message before normalization', async() => {
+    const octokit = makeOctokit()
+    const onMessage = jest.fn()
+    const included = [commit('target', 'fix: issue'), commit('ancestor', 'fix: issue ')]
+    octokit.rest.repos.listCommits.mockImplementation(async({sha}) => ({
+      data: sha === 'target' ? included : [...included, commit('newer', 'Invalid newer message')],
+    }))
+    expect(await utils.loadCommitMessagesFromRepo(
+      octokit, {}, ['main', 'dev'], '', 'target', ['main-tip', 'dev-tip'], onMessage,
+    )).toEqual(['fix: issue'])
+    expect(onMessage.mock.calls).toEqual([['fix: issue'], ['fix: issue ']])
+  })
 
   test('excludes newer/unreachable commits and deduplicates branches', async() => {
     const octokit = makeOctokit()
