@@ -16,7 +16,7 @@
 - fix(release): reject invalid or ambiguous version directives
 - fix(release): avoid history fallback for pinned file messages
 - patch(release): fail when a release exists without its exact tag
-- BREAKING CHANGE: require opt-in for major-version aliases
+- BREAKING CHANGE: change tag-major-release default from true to false
 - impr(release): sort messages within each release-note category
 - feat(release): attach current-repository Actions artifacts as unchanged release assets
 - feat(release): add style-check input with warning and failure modes
