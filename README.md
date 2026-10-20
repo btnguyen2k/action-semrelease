@@ -46,6 +46,8 @@ jobs:
           printf 'Result: %s\nVersion: %s\nRelease notes:\n%s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
 ```
 
+Sample GitHub Actions workflows are available in the [samples](samples/) directory.
+
 ## How it works
 
 This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. The following screenshot illustrates the result:
@@ -59,6 +61,8 @@ This Action analyzes commit messages to determine if a new release is needed, an
 A new major version is released when a breaking change is detected in commit messages.
 A new minor version is released when new or deprecated features or refactoring are detected.
 A new patch version is released when only bug fixes, improvements/optimizations, security/dependency updates, or reverts are detected.
+
+When calculating the version automatically, the highest qualifying bump wins: **MAJOR > MINOR > PATCH**.
 
 Messages from GitHub history and `.semrelease/this_release` are normalized before release parsing: leading whitespace and `-`, `=`, or `+` markers are removed, and surrounding whitespace is trimmed. Markers inside the summary or body are preserved.
 
