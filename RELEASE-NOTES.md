@@ -1,5 +1,36 @@
 # SemRelease release notes
 
+## 2026-10-20 - v5.0.0
+
+### Changes
+
+- BREAKING CHANGE: change tag-major-release default from true to false
+- BREAKING CHANGE: remove deprecated release metadata inputs
+- BREAKING CHANGE: require release targets to belong to configured branches
+
+### Added/Refactoring/Deprecation
+
+- Feat(release): accept partial forced versions
+- Feat(release): add style-check input with warning and failure modes
+- Feat(release): attach current-repository Actions artifacts as unchanged release assets
+- Feat(release): pin release metadata and tags to the target commit
+- Feat(rules): recognize deps and revert as patch release types
+
+### Fixed/Improvements
+
+- Fix(release): avoid history fallback for pinned file messages
+- Fix(release): keep exact version tags immutable
+- Fix(release): reject incomplete history and baseline pagination
+- Fix(release): reject invalid or ambiguous version directives
+- Fix(release): verify tag absence before ignoring delete conflicts
+- Fix(rules): use header types for version bumps and release-note grouping
+- Impr(release): sort messages within each release-note category
+- Patch(api): retry transient reads and rate limits within a bounded budget
+- Patch(release): fail when a release exists without its exact tag
+- Patch(release): report missing release baselines explicitly
+- Patch(release): warn when failed releases need manual cleanup
+- Patch(runtime): run the action on Node.js 24
+
 ## 2025-04-27 - v4.0.0
 
 ### Added/Refactoring/Deprecation
