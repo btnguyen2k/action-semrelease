@@ -50,7 +50,7 @@ Sample GitHub Actions workflows are available in the [samples](samples/) directo
 
 ## How it works
 
-This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. The following screenshot illustrates the result:
+This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. Messages in `.semrelease/this_release` take precedence over Git history; history is scanned only if the file is missing or contains no messages. The following screenshot illustrates the result:
 
 ![Releases and Tags](docs/semrelease-releases-and-tags.png)
 
@@ -224,21 +224,23 @@ This Action outputs the following:
 
 ## Customizing Version Numbers and Commit Messages
 
-There may be scenarios where you want to customize the version number for a release. For instance, if the current version is `3.4.5` but you prefer the new release to be `6.0.0` instead of `3.4.6` or `3.5.0` or `4.0.0`. Additionally, since commit messages are used to compile the release notes, you might want to customize which commit messages are analyzed and included.
+Create or edit `.semrelease/this_release` in the repository root, then commit and push it so it exists at `target-sha` (the event SHA by default). Local-only edits are not read.
 
-These customizations can be achieved by using the `.semrelease/this_release` file located in the repository's root directory. This file is a simple text file containing the following information:
+Set a custom version with a `#!VERSION=<version>` line, without a list marker:
 
 ```text
-# Lines starting with '#' are comments and will be ignored.
+#!VERSION=6.0.0
 
-Lines not starting with '#' are commit messages and will be used to analyze and compile the release notes.
-
-- Each line should contain a single commit message only.
-
-= Leading whitespace and `-`, `=`, or `+` markers are trimmed before parsing the commit message.
+# One commit message per line.
+- feat: add a public API
+- fix: handle empty input
 ```
 
-If the `.semrelease/this_release` file does not exist or contains no commit messages, the Action will fallback to analyzing commit messages from the repository's commits.
+This requests version `6.0.0` (`v6.0.0` with the default `tag-prefix`) instead of the automatic bump. Omit the directive for automatic versioning. Only one directive is allowed; malformed or duplicate directives and invalid versions fail. Full SemVer, including pre-releases and build metadata, is supported; shorthands `6` and `6.1` are normalized to `6.0.0` and `6.1.0`.
+
+Blank lines and ordinary `#` comments are ignored; `#!VERSION` is the directive exception. Leading whitespace and `-`, `=` or `+` markers are removed from message lines before parsing.
+
+Messages in the file replace history for version calculation and release notes. Unrecognized messages do not trigger fallback: if none qualify under the [versioning rules](#versioning-rules), the release is skipped, even with a forced version. History is used only when the file is absent or has no messages; any version directive is retained during this fallback, and history must still contain a qualifying message.
 
 ### Pre-release preparation and Post-release cleanup
 
