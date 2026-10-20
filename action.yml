@@ -6,40 +6,52 @@ branding:
   color: 'red'
 inputs:
   github-token:
-    description: 'GitHub token with access to your repository scoped in as a secret'
+    description: 'Token with Contents write permission to publish, plus Actions read permission when attaching artifacts'
     required: true
   dry-run:
-    description: 'Dry run flag'
+    description: 'Set to true to calculate version and notes without creating tags or releases'
     required: false
     default: 'false'
+  style-check:
+    description: 'Set to true to fail on invalid short summaries of recognized typed commits; false logs warnings and continues'
+    required: false
+    default: 'false'
+  target-sha:
+    description: 'Commit SHA to release; defaults to the event SHA and must be a tip or ancestor of a configured branch'
+    required: false
+    default: ''
   tag-prefix:
-    description: 'Tag prefix, e.g. v'
+    description: 'Prefix for version lookup and release tags, e.g. v for v1.2.3'
     required: false
     default: 'v'
   tag-major-release:
-    description: 'If set, a major release tag will be created, e.g. v1'
-    required: false
-    default: 'true'
-  tag-minor-release:
-    description: 'If set, a minor release tag will be created, e.g. v1.2'
+    description: 'Set to true to also create or move the major-version alias, e.g. v1'
     required: false
     default: 'false'
-  auto-mode:
-    description: 'If set, next release version is automatically determined, ignoring the information in RELEASE-NOTES or CHANGELOG file'
+  tag-minor-release:
+    description: 'Set to true to also create or move the minor-version alias, e.g. v1.2'
     required: false
     default: 'false'
   branches:
-    description: 'Branches to fetch commit messages for release notes (auto-mode only)'
+    description: 'Comma-separated branches for target validation and commit scanning, e.g. main,release,dev'
     required: false
     default: 'main,master'
   path:
-    description: 'Scan only commits containing this file path (auto-mode only)'
+    description: 'Repository-relative file or directory path to filter commit scanning; empty means all paths'
     required: false
     default: ''
   tag-only:
-    description: 'If set, only tags are created'
+    description: 'Set to true to create tags without publishing a GitHub release; artifact inputs are ignored'
     required: false
     default: 'false'
+  artifact-ids:
+    description: 'Current-repository Actions artifact IDs to attach as-is; separated by commas, semicolons or whitespace'
+    required: false
+    default: ''
+  artifact-run-id:
+    description: 'Expected source run for artifacts; defaults to the current run and must match the release target'
+    required: false
+    default: ''
 outputs:
   releaseVersion:
     description: 'The released version string'
@@ -48,5 +60,5 @@ outputs:
   result:
     description: 'Action result, either FAILED, SKIPPED, or SUCCESS'
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: 'node24'
+  main: 'dist/index.cjs'

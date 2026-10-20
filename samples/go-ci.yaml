@@ -1,0 +1,80 @@
+# Tests/builds a root Go module and previews a release without publishing.
+# Copy to .github/workflows/go-ci.yaml; keep this filename for release workflow calls.
+# Runs on pushes, PR updates, or workflow_call using the automatic GITHUB_TOKEN.
+name: Go CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    types: [opened, edited, reopened, synchronize, review_requested]
+  workflow_call:
+    inputs:
+      target-sha:
+        description: Pinned commit SHA to test; defaults to the workflow context SHA
+        required: false
+        type: string
+        default: ''
+    outputs:
+      result:
+        description: Release preview result
+        value: ${{ jobs.ci.outputs.result }}
+      release-version:
+        description: Planned release version
+        value: ${{ jobs.ci.outputs.release-version }}
+permissions:
+  contents: read
+jobs:
+  # Check out the event SHA (synthetic merge on PRs), or an explicit target-sha.
+  # Standalone PR previews use base history/metadata, not the proposed PR changes.
+  # A caller's full 40-character SHA overrides both checkout and preview targets.
+  pin:
+    runs-on: ubuntu-latest
+    outputs:
+      target-sha: ${{ steps.capture.outputs.target-sha }}
+      action-target-sha: ${{ steps.capture.outputs.action-target-sha }}
+      action-branch: ${{ steps.capture.outputs.action-branch }}
+    steps:
+      - name: Capture pinned commit SHA
+        id: capture
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target-sha || github.sha }}
+          PR_BASE_SHA: ${{ !inputs.target-sha && github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          ACTION_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: |
+          if [[ ! "$TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::target-sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          ACTION_TARGET_SHA="${PR_BASE_SHA:-$TARGET_SHA}"
+          if [[ ! "$ACTION_TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::Action target must be a full 40-character commit SHA"
+            exit 1
+          fi
+          printf 'target-sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          printf 'action-target-sha=%s\n' "$ACTION_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          printf 'action-branch=%s\n' "$ACTION_BRANCH" >> "$GITHUB_OUTPUT"
+  ci:
+    needs: pin
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.plan.outputs.result }}
+      release-version: ${{ steps.plan.outputs.releaseVersion }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: go build ./...
+      # Read-only plan: SUCCESS permits publication; SKIPPED means no release is needed.
+      - name: Preview release
+        id: plan
+        uses: btnguyen2k/action-semrelease@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: true
+          target-sha: ${{ needs.pin.outputs.action-target-sha }}
+          branches: ${{ needs.pin.outputs.action-branch }}

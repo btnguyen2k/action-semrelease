@@ -1,0 +1,156 @@
+# Tests a root Go module and publishes its version tag and GitHub release.
+# Copy with go-ci.yaml to .github/workflows; choose this OR go-release.yaml.
+# Go tooling fetches tagged source; no binary or ZIP upload is needed.
+# Commit .semrelease/this_release in the PR, for example:
+#   #!VERSION=2.0.0
+#   feat(api): add batch operations
+# Optional VERSION sets the version; otherwise example prefixes determine the bump:
+# breaking change: = major, feat: = minor, fix: = patch.
+# File messages replace history; if none qualify, skip without history fallback.
+# Without file messages, scan history and retain VERSION; no matches means skip.
+# Read at the pinned SHA; after publication, reset to comments in a separate commit.
+# GITHUB_TOKEN must be allowed to push cleanup commits to RELEASE_BRANCH.
+name: Go release with metadata
+env:
+  RELEASE_BRANCH: release
+# Triggered when a PR to the release branch is closed; unmerged PRs skip all jobs.
+on:
+  pull_request:
+    types: [closed]
+    # Keep in sync with RELEASE_BRANCH; trigger filters cannot use env expressions.
+    branches: [release]
+concurrency:
+  group: go-release
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  # Pin the merged commit once for CI and publication.
+  pin:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      target-sha: ${{ steps.capture.outputs.target-sha }}
+    steps:
+      - name: Capture pinned commit SHA
+        id: capture
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::target-sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          printf 'target-sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+  # Re-test that SHA and calculate the version without creating tags/releases.
+  ci:
+    needs: pin
+    uses: ./.github/workflows/go-ci.yaml
+    with:
+      target-sha: ${{ needs.pin.outputs.target-sha }}
+  # Publish the tested SHA only after a SUCCESS preview; SKIPPED does not release.
+  release:
+    needs: [pin, ci]
+    if: needs.ci.outputs.result == 'SUCCESS'
+    runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.status.outputs.published }}
+      release-version: ${{ steps.publish.outputs.releaseVersion }}
+      release-notes: ${{ steps.publish.outputs.releaseNotes }}
+    # Use GITHUB_TOKEN to publish and push the post-release metadata cleanup.
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
+      - name: Publish GitHub release
+        id: publish
+        uses: btnguyen2k/action-semrelease@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: ${{ env.DRY_RUN || 'false' }}
+          target-sha: ${{ needs.pin.outputs.target-sha }}
+          branches: ${{ env.RELEASE_BRANCH }}
+      # A dry run can return SUCCESS, but must not clean metadata or create a PR.
+      - name: Record publication status
+        id: status
+        if: steps.publish.outputs.result == 'SUCCESS'
+        shell: bash
+        run: |
+          DRY_RUN_VALUE="${DRY_RUN:-false}"
+          if [[ "${DRY_RUN_VALUE,,}" =~ ^[[:space:]]*true[[:space:]]*$ ]] || [ -e .semrelease-dry-run ]; then
+            echo "::notice::Dry run: skipping post-release changes"
+            echo 'published=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'published=true' >> "$GITHUB_OUTPUT"
+          fi
+      # Keep the tag on the tested commit; cleanup is a separate, non-forced push.
+      - name: Cleanup file .semrelease/this_release
+        if: steps.status.outputs.published == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.publish.outputs.releaseVersion }}
+        run: |
+          if [ ! -f .semrelease/this_release ]; then
+            echo "::notice::No .semrelease/this_release file to clean up"
+            exit 0
+          fi
+          printf '# Cleared after releasing version %s.\n' "$VERSION" > .semrelease/this_release
+          printf '# Add messages for the next release here.\n' >> .semrelease/this_release
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- .semrelease/this_release
+          if git diff --cached --quiet -- .semrelease/this_release; then
+            echo "::notice::Release metadata is already clean"
+          else
+            git commit -m "Cleanup file .semrelease/this_release post releasing version ${VERSION}" -- .semrelease/this_release
+            git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
+          fi
+      - name: Report cleanup failure
+        if: failure() && steps.publish.outputs.result == 'SUCCESS'
+        run: |
+          echo "::warning::Publication succeeded, but metadata cleanup failed. Inspect the cleanup commit/push and finish cleanup manually; do not rerun publication or delete the successful release."
+  # Wait for publication and cleanup; open a PR, never merge it automatically.
+  mergeToMain:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    # Repository Actions settings must allow creating pull requests.
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Create release-to-main PR
+        uses: actions/github-script@v9
+        env:
+          VERSION: ${{ needs.release.outputs.release-version }}
+          RELEASE_NOTES: ${{ needs.release.outputs.release-notes }}
+        with:
+          script: |
+            const {owner, repo} = context.repo
+            const {data: existing} = await github.rest.pulls.list({
+              owner, repo,
+              state: 'open',
+              head: `${owner}:${process.env.RELEASE_BRANCH}`,
+              base: 'main',
+              per_page: 1,
+            })
+            if (existing.length) {
+              core.info(`Release-to-main PR already exists: ${existing[0].html_url}`)
+              return
+            }
+            const {data: pr} = await github.rest.pulls.create({
+              owner, repo,
+              title: `Merge to main after releasing version ${process.env.VERSION}`,
+              body: process.env.RELEASE_NOTES,
+              head: process.env.RELEASE_BRANCH,
+              base: 'main',
+              maintainer_can_modify: true,
+            })
+            core.info(`Created release-to-main PR: ${pr.html_url}`)
+      - name: Report post-release PR failure
+        if: failure()
+        run: |
+          echo "::warning::Post-release PR creation failed. Inspect existing release-to-main PRs and retry only this job; do not rerun or undo publication."

@@ -1,8 +1,12 @@
-module.exports = {
+export {
   getOptions,
   loadCommitMessagesFromFile,
   loadCommitMessagesFromRepo,
+  validateReleaseBranches,
   getReleaseOptionsFromFile,
+  readReleaseLinesAtCommit,
+  resolveTagCommit,
+  normalizeReleaseVersion,
 
   deleteRefSilently,
   getAllBranches,
@@ -15,15 +19,18 @@ module.exports = {
   getTag,
 
   parseSemver,
-  parseReleaseMeta,
   incMajorSemver,
   incMinorSemver,
   incPatchSemver,
 }
 
-const github = require('@actions/github')
-const core = require('@actions/core')
-const fs = require('fs')
+import * as github from '@actions/github'
+import * as core from '@actions/core'
+import fs from 'node:fs'
+import {readGithub} from './github-read.js'
+import {getArtifactOptions} from './artifacts.js'
+
+const reCommitMessagePrefix = /^[\s=+-]*/
 
 async function readFileAsLines(filename) {
   return await fs.promises.readFile(filename, {encoding: 'utf8'})
@@ -36,14 +43,20 @@ async function readFileAsLines(filename) {
 /**
  * Loads commit messages from the specified file (default .semrelease/this_release).
  * @param commitLogsFile
+ * @param lines
+ * @param {(message: string) => void} [onMessage] Receives entries before trailing whitespace is trimmed.
  * @returns {Promise<string[]|null>}
  */
-async function loadCommitMessagesFromFile(commitLogsFile) {
-  return await readFileAsLines(commitLogsFile || '.semrelease/this_release')
+async function loadCommitMessagesFromFile(commitLogsFile, lines, onMessage) {
+  return await (lines === undefined ? readFileAsLines(commitLogsFile || '.semrelease/this_release') : Promise.resolve(lines))
     .then(commitLogs => commitLogs ? commitLogs
-      // trim spaces, leading bullet chars (- and =) && remove empty and comment lines
-      .map(line => line.replace(/^[\s=-]*/, '').trim())
-      .filter(line => line !== '' && !line.startsWith('#')) : null)
+      // Strip metadata bullets before validation, but preserve summary whitespace.
+      .map(line => line.replace(reCommitMessagePrefix, ''))
+      .filter(line => line.trim() !== '' && !line.startsWith('#'))
+      .map(line => {
+        onMessage?.(line)
+        return line.trim()
+      }) : null)
 }
 
 /**
@@ -54,38 +67,78 @@ async function loadCommitMessagesFromFile(commitLogsFile) {
  * @param scanPath
  * @returns {Promise<string[]>}
  */
-async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath) {
+async function resolveBranchTips(octokit, branches) {
+  if (branches.length === 0) throw new Error('At least one branch is required')
+  const tips = []
+  for (const branch of new Set(branches)) {
+    try {
+      const {data: tip} = await readGithub(`resolve branch ${branch}`, () => octokit.rest.repos.getCommit({
+        owner: github.context.repo.owner,
+        repo: github.context.repo.repo,
+        ref: branch,
+      }))
+      tips.push(tip.sha)
+    } catch (error) {
+      if (error.status !== 404 && error.status !== 422) throw error
+      core.warning(`Branch ${branch} does not exist (HTTP ${error.status}); skipping it.`)
+    }
+  }
+  if (tips.length === 0) throw new Error('None of the configured branches exist')
+  return tips
+}
+
+async function validateReleaseBranches(octokit, branches, targetSha) {
+  const tips = await resolveBranchTips(octokit, branches)
+  for (const sha of tips) {
+    if (sha === targetSha) return tips
+    const {data: comparison} = await readGithub(`compare ${targetSha} to ${sha}`, () => octokit.rest.repos.compareCommits({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      base: targetSha,
+      head: sha,
+    }))
+    if (comparison.status === 'ahead' || comparison.status === 'identical') return tips
+  }
+  throw new Error(`Target commit ${targetSha} is not reachable from any configured branch`)
+}
+
+async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scanPath, targetSha, branchTips, onMessage) {
   const commitMessages = []
-  for (const branch of branches) {
-    const params = {...filterCommits, sha: branch}
+  const tips = targetSha ? branchTips ?? await resolveBranchTips(octokit, branches) : branches
+  let reachable
+  if (targetSha) {
+    const params = {...filterCommits, sha: targetSha}
+    if (scanPath) params.path = scanPath
+    reachable = new Set((await getAllCommits(octokit, params)).map(commit => commit.sha))
+  }
+  for (const sha of tips) {
+    const params = {...filterCommits, sha}
     if (scanPath) {
       params.path = scanPath
     }
     const commits = await getAllCommits(octokit, params)
     for (const commit of commits) {
-      // trim spaces, leading bullet chars (- and =)
-      const commitMsg = commit.commit.message.replace(/^[\s=-]*/, '').trim()
-      commitMessages.push(commitMsg)
+      if (reachable && !reachable.has(commit.sha)) continue
+      commitMessages.push(commit.commit.message)
     }
   }
 
-  // remove empty and duplicated lines
-  return commitMessages
-    .filter(line => line !== '')
-    .filter((line, index, self) => self.indexOf(line) === index)
+  const messages = [...new Set(commitMessages)].map(message => {
+    onMessage?.(message)
+    return message.replace(reCommitMessagePrefix, '').trim()
+  })
+  return [...new Set(messages.filter(message => message !== ''))]
 }
 
 /**
  * Convenience function to construct Option struct from inputs and environment variables.
- * @returns {{isTagMajorRelease: boolean, tagPrefix: string, changelogFile: string, isTagOnly: boolean, scanPath: string, isAutoMode: boolean, isDryRun: *, isTagMinorRelease: boolean, branches: string[]}}
+ * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, isTagOnly: boolean, artifactIds: number[], artifactRunId: number|string, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[], styleCheck: boolean}}
  */
 function getOptions() {
   const inputDryRun = 'dry-run'
   const defaultDryRun = 'false'
-  const inputAutoMode = 'auto-mode'
-  const defaultAutoMode = 'false'
   const inputTagMajorRelease = 'tag-major-release'
-  const defaultTagMajorRelease = 'true'
+  const defaultTagMajorRelease = 'false'
   const inputTagMinorRelease = 'tag-minor-release'
   const defaultTagMinorRelease = 'false'
   const inputTagPrefix = 'tag-prefix'
@@ -96,19 +149,19 @@ function getOptions() {
   const defaultTagOnly = 'false'
   const inputPath = 'path'
   const defaultPath = ''
-  const inputChangelogFile = 'changelog-file'
-  const defaultChangelogFile = ''
 
+  const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
   return {
     isDryRun: optDryRun(),
-    isAutoMode: String(core.getInput(inputAutoMode) || process.env['AUTO_MODE'] || defaultAutoMode).toLowerCase() === 'true',
+    styleCheck: optStyleCheck(),
+    targetSha: core.getInput('target-sha') || github.context.sha,
     isTagMajorRelease: String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true',
     isTagMinorRelease: String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true',
     tagPrefix: String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix),
     branches: optBranches(),
-    isTagOnly: String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true',
+    isTagOnly,
+    ...getArtifactOptions(isTagOnly),
     scanPath: String(core.getInput(inputPath) || process.env['SCAN_PATH'] || defaultPath),
-    changelogFile: String(core.getInput(inputChangelogFile) || process.env['CHANGELOG_FILE'] || defaultChangelogFile),
   }
 
   // dry-run mode is enabled if any of the following is true:
@@ -126,24 +179,86 @@ function getOptions() {
     const branches = branchesStr.trim().split(/[,;\s]+/)
     return branches.filter(branch => branch.trim() !== '')
   }
+
+  function optStyleCheck() {
+    const value = String(core.getInput('style-check') || 'false').trim().toLowerCase()
+    if (value !== 'true' && value !== 'false') {
+      throw new Error('style-check must be true or false')
+    }
+    return value === 'true'
+  }
 }
 
-async function getReleaseOptionsFromFile(commitLogsFile) {
-  const releaseOptions = {}
-  await readFileAsLines(commitLogsFile || '.semrelease/this_release')
-    .then(commitLogs => {
-      if (commitLogs) {
-        commitLogs.forEach(line => {
-          const parts = line.trim().split('=')
-          if (parts.length === 2) {
-            if (parts[0].trim().toUpperCase() === '#!VERSION') {
-              releaseOptions['releaseVersion'] = parts[1].trim()
-            }
-          }
-        })
-      }
-    })
-  return releaseOptions
+async function getReleaseOptionsFromFile(commitLogsFile, lines) {
+  const filename = commitLogsFile || '.semrelease/this_release'
+  const commitLogs = lines === undefined ? await readFileAsLines(filename) : lines
+  const directives = (commitLogs || [])
+    .map((text, index) => ({text: text.trim(), line: index + 1}))
+    .filter(({text}) => /^#!VERSION\b/i.test(text))
+  if (directives.length > 1) {
+    throw new Error(`Multiple version directives in ${filename} at lines ${directives.map(({line}) => line).join(', ')}; only one is allowed`)
+  }
+  if (directives.length === 0) return {}
+  const {text, line} = directives[0]
+  const match = text.match(/^#!VERSION\s*=\s*([^=]+)$/i)
+  if (!match || !match[1].trim()) {
+    throw new Error(`Malformed version directive in ${filename} at line ${line}; expected #!VERSION=<version>`)
+  }
+  const releaseVersion = match[1].trim()
+  try {
+    normalizeReleaseVersion(releaseVersion)
+  } catch (error) {
+    throw new Error(`Invalid version number in ${filename} at line ${line}: ${releaseVersion}`, {cause: error})
+  }
+  return {releaseVersion}
+}
+
+async function readReleaseLinesAtCommit(octokit, targetSha) {
+  try {
+    const {data: file} = await readGithub(`release metadata at ${targetSha}`, () => octokit.rest.repos.getContent({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      path: '.semrelease/this_release',
+      ref: targetSha,
+    }))
+    if (Array.isArray(file) || file.type !== 'file' || file.encoding !== 'base64') {
+      throw new Error('Expected .semrelease/this_release to be a base64-encoded file')
+    }
+    return Buffer.from(file.content, 'base64').toString('utf8').split(/\r?\n/)
+  } catch (error) {
+    if (error.status === 404) return null
+    throw error
+  }
+}
+
+async function resolveTagCommit(octokit, tagName) {
+  const ref = await getRefByTagName(octokit, tagName)
+  if (!ref) return null
+  let object = ref.object
+  for (let depth = 0; depth < 16; depth++) {
+    if (object.type === 'commit') return object.sha
+    if (object.type !== 'tag') {
+      throw new Error(`Tag ${tagName} references unsupported object type ${object.type}`)
+    }
+    const tag = await getTag(octokit, object.sha)
+    if (!tag) throw new Error(`Tag object ${object.sha} for ${tagName} was not found`)
+    object = tag.object
+  }
+  throw new Error(`Tag ${tagName} contains too many nested tag objects`)
+}
+
+function normalizeReleaseVersion(text) {
+  let version = parseSemver(text)
+  if (!version) {
+    const partial = text.match(/^v?((?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*))?)([-+].*)?$/)
+    if (partial) {
+      const components = partial[1].split('.')
+      while (components.length < 3) components.push('0')
+      version = parseSemver(components.join('.') + (partial[2] || ''))
+    }
+  }
+  if (!version) throw new Error(`Invalid version number: ${text}`)
+  return version
 }
 
 /*----------------------------------------------------------------------*/
@@ -156,9 +271,9 @@ async function deleteRefSilently(octokit, ref) {
       ref,
     })
   } catch (error) {
-    if (error.status !== 404 && error.status !== 422) {
-      throw error
-    }
+    if (error.status === 404) return
+    if (error.status === 422 && !await getRefByTagName(octokit, ref.replace(/^tags\//, ''))) return
+    throw error
   }
 }
 
@@ -167,7 +282,7 @@ async function getAllBranches(octokit, overrideParams) {
   const params = overrideParams ? {...defaultParams, ...overrideParams} : defaultParams
   const branches = []
   for (;;) {
-    const {data: page} = await octokit.rest.repos.listBranches(params)
+    const {data: page} = await readGithub(`branches page ${params.page}`, () => octokit.rest.repos.listBranches(params))
     branches.push(...page)
     if (page.length < params.per_page) {
       break
@@ -179,11 +294,11 @@ async function getAllBranches(octokit, overrideParams) {
 
 async function getCommit(octokit, sha) {
   try {
-    const {data: commitInfo} = await octokit.rest.git.getCommit({
+    const {data: commitInfo} = await readGithub(`commit ${sha}`, () => octokit.rest.git.getCommit({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       commit_sha: sha,
-    })
+    }))
     return commitInfo
   } catch (error) {
     if (error.status === 404) {
@@ -199,7 +314,7 @@ async function getAllCommits(octokit, overrideParams) {
   const commits = []
   try {
     for (; ;) {
-      const {data: page} = await octokit.rest.repos.listCommits(params)
+      const {data: page} = await readGithub(`commits ${params.sha || 'default branch'} page ${params.page}`, () => octokit.rest.repos.listCommits(params))
       commits.push(...page)
       if (page.length < params.per_page) {
         break
@@ -207,6 +322,7 @@ async function getAllCommits(octokit, overrideParams) {
       params.page++
     }
   } catch (error) {
+    if (params.page > 1) throw error
     if (error.status !== 404) {
       throw error
     }
@@ -216,11 +332,11 @@ async function getAllCommits(octokit, overrideParams) {
 
 async function getReleaseByTag(octokit, tagName) {
   try {
-    const {data: releaseInfo} = await octokit.rest.repos.getReleaseByTag({
+    const {data: releaseInfo} = await readGithub(`release ${tagName}`, () => octokit.rest.repos.getReleaseByTag({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       tag: tagName,
-    })
+    }))
     return releaseInfo
   } catch (error) {
     if (error.status === 404) {
@@ -234,7 +350,7 @@ async function findLatestRelease(octokit, tagPrefix) {
   const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
   try {
     for (; ;) {
-      const {data: page} = await octokit.rest.repos.listReleases(params)
+      const {data: page} = await readGithub(`releases page ${params.page}`, () => octokit.rest.repos.listReleases(params))
       for (const release of page) {
         if (release.tag_name.startsWith(tagPrefix) && release.tag_name.slice(tagPrefix.length).match(reSemverRaw)) {
           return release
@@ -246,6 +362,7 @@ async function findLatestRelease(octokit, tagPrefix) {
       params.page++
     }
   } catch (error) {
+    if (params.page > 1) throw error
     if (error.status !== 404) {
       throw error
     }
@@ -255,11 +372,11 @@ async function findLatestRelease(octokit, tagPrefix) {
 
 async function getRefByTagName(octokit, tagName) {
   try {
-    const {data: refInfo} = await octokit.rest.git.getRef({
+    const {data: refInfo} = await readGithub(`tag reference ${tagName}`, () => octokit.rest.git.getRef({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       ref: `tags/${tagName}`
-    })
+    }))
     return refInfo
   } catch (error) {
     if (error.status === 404) {
@@ -273,7 +390,7 @@ async function findLatestTag(octokit, tagPrefix) {
   const params = {owner: github.context.repo.owner, repo: github.context.repo.repo, page: 1, per_page: 100}
   try {
     for (; ;) {
-      const {data: page} = await octokit.rest.repos.listTags(params)
+      const {data: page} = await readGithub(`tags page ${params.page}`, () => octokit.rest.repos.listTags(params))
       for (const tag of page) {
         if (tag.name.startsWith(tagPrefix) && tag.name.slice(tagPrefix.length).match(reSemverRaw)) {
           return tag
@@ -285,6 +402,7 @@ async function findLatestTag(octokit, tagPrefix) {
       params.page++
     }
   } catch (error) {
+    if (params.page > 1) throw error
     if (error.status !== 404) {
       throw error
     }
@@ -294,11 +412,11 @@ async function findLatestTag(octokit, tagPrefix) {
 
 async function getTag(octokit, sha) {
   try {
-    const {data: tagInfo} = await octokit.rest.git.getTag({
+    const {data: tagInfo} = await readGithub(`tag object ${sha}`, () => octokit.rest.git.getTag({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
       tag_sha: sha,
-    })
+    }))
     return tagInfo
   } catch (error) {
     if (error.status === 404) {
@@ -310,7 +428,6 @@ async function getTag(octokit, sha) {
 
 /*----------------------------------------------------------------------*/
 
-const reSemverInHeading = /^#+.*?[\s:-]v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)/
 const reSemver = /^v?((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
 const reSemverRaw = /^((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/
 
@@ -326,89 +443,6 @@ function parseSemver(text) {
     }
   }
   return null
-}
-
-/**
- * Parses release notes from specified file.
- * @param file
- * @returns {{release_notes: string, release_version: string}|null}
- */
-function parse(file) {
-  const releaseNotes = []
-  let enterReleaseNotes = false
-  let version = null
-  const data = fs.readFileSync(file, {encoding: 'utf8'}).toString()
-  const lines = data.split(/\r?\n/)
-  for (const line of lines) {
-    const matches = line.match(reSemverInHeading)
-    if (matches) {
-      if (enterReleaseNotes) {
-        break
-      }
-      enterReleaseNotes = true
-      version = parseSemver(matches[1].trim())
-    } else if (enterReleaseNotes) {
-      releaseNotes.push(line.trim())
-    }
-  }
-  return version !== null ?{
-    release_version: version,
-    release_notes: releaseNotes.join('\n').trim()
-  } : null
-}
-
-const releaseNotesFilenames = [
-  "RELEASE-NOTES.md", "RELEASE_NOTES.MD", "RELEASE-NOTES",
-  "RELEASE_NOTES.md", "RELEASE_NOTES.MD", "RELEASE_NOTES",
-  "release-notes.md", "release-notes",
-  "release_notes.md", "release_notes",
-]
-
-const changelogFilenames = [
-  "CHANGELOG.md", "CHANGELOG.MD", "CHANGELOG",
-  "CHANGE-LOG.md", "CHANGE-LOG.MD", "CHANGE-LOG",
-  "CHANGE_LOG.md", "CHANGE_LOG.MD", "CHANGE_LOG",
-  "changelog.md", "changelog",
-  "change-log.md", "change-log",
-  "change_log.md", "change_log",
-]
-
-/**
- * Parses release metadata from specified change log file.
- *
- * If the specified file does not exist, the function will try to scan common release notes files.
- *
- * @param changelogFile
- * @returns {{release_notes: string, release_version: string}|null}
- */
-function parseReleaseMeta(changelogFile) {
-  core.warning(`⚠️ DEPRECATION WARNING`)
-  core.warning(`⚠️ Parsing changelog file for release info is deprecated and will be removed in future versions.`)
-  core.warning(`⚠️ Please use .senrelease/this_release file instead. See https://github.com/btnguyen2k/action-semrelease for more details.`)
-  if (changelogFile && fs.existsSync(changelogFile)) {
-    // changelog file is specified and exists
-    return parse(changelogFile)
-  }
-
-  // scan common release notes files
-  for (const file of releaseNotesFilenames) {
-    if (fs.existsSync(file)) {
-      const result = parse(file)
-      if (!result) {
-        // release notes file exists but no release info found, so skip to check changelog file
-        break
-      }
-      // release notes file exists and release info found
-      return result
-    }
-  }
-
-  // scan common changelog files
-  for (const file of changelogFilenames) {
-    if (fs.existsSync(file)) {
-      return parse(file)
-    }
-  }
 }
 
 function incMajorSemver(version) {

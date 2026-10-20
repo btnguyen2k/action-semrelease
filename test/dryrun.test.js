@@ -1,11 +1,12 @@
-const app = require('../src/app')
+import * as app from '../src/app.js'
 
 function setup() {
-  process.env['INPUT_dry-run'] = process.env['DRY_RUN'] = 'true'
-  process.env['INPUT_github-token'] = process.env['GITHUB_TOKEN'] || ''
-  process.env['INPUT_tag-prefix'] = process.env['TAG_PREFIX'] || 'v'
-  process.env['INPUT_auto-mode'] = process.env['AUTO_MODE'] = 'true'
-  process.env['INPUT_branches'] = process.env['BRANCHES'] = 'dev'
+  process.env['INPUT_DRY-RUN'] = process.env['DRY_RUN'] = 'true'
+  process.env['INPUT_GITHUB-TOKEN'] = process.env['GITHUB_TOKEN'] || ''
+  process.env['INPUT_TAG-PREFIX'] = process.env['TAG_PREFIX'] || 'v'
+  process.env['INPUT_AUTO-MODE'] = process.env['AUTO_MODE'] = 'true'
+  process.env['INPUT_BRANCHES'] = process.env['BRANCHES'] = 'dev'
+  process.env['INPUT_TARGET-SHA'] = '306605adc2b204a0211d7dcc2c86d5e9fef00c36'
   process.env['GITHUB_REPOSITORY'] = 'btnguyen2k/action-semrelease'
 }
 

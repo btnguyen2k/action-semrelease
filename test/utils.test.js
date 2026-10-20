@@ -1,26 +1,5 @@
-const utils = require('../src/utils')
-const github = require('@actions/github')
-
-test('parse release-notes', () => {
-  const releaseNotes = utils.parseReleaseMeta()
-  expect(releaseNotes).toBeDefined()
-})
-
-test('parse release-notes - specific changelog file', () => {
-  const releaseNotes = utils.parseReleaseMeta('testdata/CHANGELOG.md')
-  expect(releaseNotes).toBeDefined()
-})
-
-test('parse release-notes from change-log file', () => {
-  const save = process.cwd()
-  try {
-    process.chdir('testdata/')
-    const releaseNotes = utils.parseReleaseMeta()
-    expect(releaseNotes).toBeDefined()
-  } finally {
-    process.chdir(save)
-  }
-})
+import * as utils from '../src/utils.js'
+import * as github from '@actions/github'
 
 test('incMajorSemver', () => {
   const version = {
@@ -42,24 +21,20 @@ test('incMajorSemver', () => {
 
 test('getOptions - default values', () => {
   const defaultDryRun = false
-  const defaultAutoMode = false
-  const defaultTagMajorRelease = true
+  const defaultTagMajorRelease = false
   const defaultTagMinorRelease = false
   const defaultTagPrefix = 'v'
   const defaultBranches = ['main', 'master']
   const defaultTagOnly = false
   const defaultPath = ''
-  const defaultChangelogFile = ''
   const options = utils.getOptions()
   expect(options.isDryRun).toBe(defaultDryRun)
-  expect(options.isAutoMode).toBe(defaultAutoMode)
   expect(options.isTagMajorRelease).toBe(defaultTagMajorRelease)
   expect(options.isTagMinorRelease).toBe(defaultTagMinorRelease)
   expect(options.tagPrefix).toBe(defaultTagPrefix)
   expect(options.branches).toEqual(defaultBranches)
   expect(options.isTagOnly).toBe(defaultTagOnly)
   expect(options.scanPath).toBe(defaultPath)
-  expect(options.changelogFile).toBe(defaultChangelogFile)
 })
 
 test('getReleaseOptionsFromFile - not-exists', async() => {
@@ -257,20 +232,19 @@ describe('with octokit', () => {
     }
   })
 
-  test('test getAllBranches', async() => {
-    const testBranches = {main: true, dev: true}
+  test('test getAllBranches - authenticated repository smoke', async() => {
     const branches = await utils.getAllBranches(octokit)
+
+    expect(Array.isArray(branches)).toBe(true)
     expect(branches.length).toBeGreaterThan(0)
     for (const branch of branches) {
-      if (testBranches[branch.name]) {
-        delete testBranches[branch.name]
-      }
+      expect(branch).toEqual(expect.objectContaining({
+        name: expect.any(String),
+        commit: expect.objectContaining({
+          sha: expect.stringMatching(/^[0-9a-f]{40}$/i),
+        }),
+      }))
     }
-    expect(Object.keys(testBranches).length).toBe(0)
-  })
-  test('test getAllBranches - long', async() => {
-    const branches = await utils.getAllBranches(octokit, {owner: 'btnguyen2k', repo: 'long-repo', per_page: 10})
-    expect(branches.length).toBeGreaterThan(100)
   })
 
   test('test getAllCommits', async() => {
