@@ -2,14 +2,23 @@ import {readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync}
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {spawnSync} from 'node:child_process'
+import {parseCommitMessages, generateReleaseNotes} from '../src/rules.js'
 
 const release = readFileSync(new URL('../.github/workflows/release.yaml', import.meta.url), 'utf8')
 const tests = readFileSync(new URL('../.github/workflows/test.yaml', import.meta.url), 'utf8')
+const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+const readmeRelease = readme.match(/### Pre-release preparation and Post-release cleanup\n[\s\S]*?```yaml\n([\s\S]*?)```/)?.[1]
+if (!readmeRelease) throw new Error('Missing release lifecycle example in README')
 let directory
 
-function script(name) {
-  const step = release.split(`      - name: ${name}\n`)[1]?.split('\n      - name:')[0]
-  const body = step?.split('        run: |\n')[1]
+function step(name, workflow = release) {
+  const body = workflow.split(`      - name: ${name}\n`)[1]?.split('\n      - name:')[0]
+  if (!body) throw new Error(`Missing workflow step: ${name}`)
+  return body
+}
+
+function script(name, workflow = release) {
+  const body = step(name, workflow).split('        run: |\n')[1]
   if (!body) throw new Error(`Missing workflow script: ${name}`)
   return body.split('\n').map(line => line.replace(/^ {10}/, '')).join('\n')
 }
@@ -29,8 +38,8 @@ function git(...args) {
   return result.stdout.trim()
 }
 
-function run(name, env) {
-  return command('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', script(name)], env)
+function run(name, env, workflow = release) {
+  return command('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', script(name, workflow)], env)
 }
 
 beforeEach(() => {
@@ -171,4 +180,222 @@ test.each(['version', 'notes', 'result', 'branch'])('publication preflight rejec
   expect(run('Check release plan and branch', plan).status).toBe(0)
   const key = {version: 'ACTUAL_VERSION', notes: 'ACTUAL_NOTES', result: 'ACTUAL_RESULT', branch: 'RELEASE_SHA'}[field]
   expect(run('Check release plan and branch', {...plan, [key]: 'changed'}).status).toBe(1)
+})
+
+describe('README release lifecycle', () => {
+  function environment() {
+    return {
+      ...repository(), RELEASE_BRANCH: 'release', TAG_PREFIX: 'v', DRY_RUN: 'false',
+      PREPARE_CHANGELOG: 'true', CLEANUP_RELEASE_FILE: 'false',
+    }
+  }
+
+  function execute(name, env) {
+    return run(name, env, readmeRelease)
+  }
+
+  function advanceBranch(source) {
+    writeFileSync(path.join(directory, 'branch-change.txt'), 'concurrent branch update\n')
+    git('add', 'branch-change.txt')
+    git('commit', '--quiet', '-m', 'concurrent branch update', '--', 'branch-change.txt')
+    git('push', '--quiet', 'origin', 'HEAD:release')
+    const advanced = git('rev-parse', 'HEAD')
+    git('checkout', '--quiet', '--detach', source)
+    return advanced
+  }
+
+  function expectMaintenanceCommit() {
+    const message = git('log', '-1', '--format=%B')
+    const bumps = []
+    const bump = () => bumps.push(true)
+    parseCommitMessages([message], bump, bump, bump)
+    expect(bumps).toEqual([])
+    const messages = ['fix: repair the parser']
+    expect(generateReleaseNotes([...messages, message])).toBe(generateReleaseNotes(messages))
+  }
+
+  test('preparation and cleanup are optional and all publishing writes require real mode', () => {
+    expect(readme).toContain('Preparation and cleanup are optional, repository-owned steps.')
+    expect(readme).not.toContain('must manually clean up')
+    expect(readmeRelease).toContain("  DRY_RUN: 'true'")
+    expect(readmeRelease).toContain("  CLEANUP_RELEASE_FILE: 'false'")
+    expect(readmeRelease).toContain('  group: release-publication\n  cancel-in-progress: false')
+    expect(readmeRelease).toContain('    shell: bash')
+    expect(readmeRelease.match(/uses: btnguyen2k\/action-semrelease@v5/g)).toHaveLength(3)
+    for (const name of ['Prepare changelog', 'Capture release target', 'Verify release target', 'Check publication plan', 'Publish release', 'Optional metadata cleanup']) {
+      expect(step(name, readmeRelease)).toContain("steps.source.outputs.dry-run == 'false'")
+    }
+    expect(step('Prepare changelog', readmeRelease)).toContain("env.PREPARE_CHANGELOG == 'true'")
+    expect(step('Optional metadata cleanup', readmeRelease)).toContain("env.CLEANUP_RELEASE_FILE == 'true'")
+    expect(step('Optional metadata cleanup', readmeRelease)).toContain("steps.publish.outputs.result == 'SUCCESS'")
+    expect(step('Plan release', readmeRelease)).toContain('target-sha: ${{ steps.source.outputs.sha }}')
+    for (const name of ['Verify release target', 'Publish release']) {
+      expect(step(name, readmeRelease)).toContain('target-sha: ${{ steps.target.outputs.sha }}')
+    }
+    expect(step('Publish release', readmeRelease)).toContain('dry-run: false')
+    expect(readmeRelease.indexOf('- name: Check publication plan')).toBeLessThan(readmeRelease.indexOf('- name: Publish release'))
+    expect(readmeRelease).not.toMatch(/git commit -am|git push -f|--force|--global|sed -i|continue-on-error|always\(\)/)
+  })
+
+  test.each(['Read release settings', 'Prepare changelog', 'Capture release target', 'Check publication plan', 'Optional metadata cleanup'])('%s has valid Bash syntax and no embedded workflow expressions', name => {
+    const body = script(name, readmeRelease)
+    expect(body).not.toContain('${{')
+    expect(command('bash', ['--noprofile', '--norc', '-n', '-c', body]).status).toBe(0)
+  })
+
+  test.each([
+    {name: 'real mode', dryRun: 'false', marker: '', expected: 'false'},
+    {name: 'requested preview', dryRun: 'true', marker: '', expected: 'true'},
+    {name: 'marker file', dryRun: 'false', marker: 'file', expected: 'true'},
+    {name: 'marker directory', dryRun: 'false', marker: 'directory', expected: 'true'},
+  ])('settings pin the source and resolve $name before write guards', ({dryRun, marker, expected}) => {
+    const env = environment()
+    if (marker === 'file') writeFileSync(path.join(directory, '.semrelease-dry-run'), '')
+    if (marker === 'directory') mkdirSync(path.join(directory, '.semrelease-dry-run'))
+    const result = execute('Read release settings', {...env, DRY_RUN: dryRun})
+    expect(result.status).toBe(0)
+    expect(readFileSync(path.join(directory, 'job-output'), 'utf8')).toBe(`sha=${env.SOURCE_SHA}\ndry-run=${expected}\n`)
+    expect(git('rev-parse', 'HEAD')).toBe(env.SOURCE_SHA)
+  })
+
+  test.each(['DRY_RUN', 'PREPARE_CHANGELOG', 'CLEANUP_RELEASE_FILE'])('settings reject an invalid %s instead of silently publishing', flag => {
+    const env = environment()
+    const result = execute('Read release settings', {...env, [flag]: 'yes'})
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain(`${flag} must be true or false`)
+    expect(existsSync(path.join(directory, 'job-output'))).toBe(false)
+  })
+
+  test('preparation preserves history and literal notes, commits only its file, and captures the pushed target', () => {
+    const env = environment()
+    const history = '# Changelog\n\n## 2020-01-01 - v4.0.0-rc2\n\nOriginal history\n'
+    writeFileSync(path.join(directory, 'CHANGELOG.md'), history)
+    git('add', 'CHANGELOG.md')
+    git('commit', '--quiet', '-m', 'changelog baseline')
+    git('push', '--quiet', 'origin', 'HEAD:release')
+    env.SOURCE_SHA = git('rev-parse', 'HEAD')
+    writeFileSync(path.join(directory, 'README.md'), 'unrelated tracked change')
+    git('add', 'README.md')
+    const notes = "It's literal: $(touch injected)\n- C:\\new\\test\n- migrate from v4.0.0-rc2\n- `touch injected-too`"
+    const result = execute('Prepare changelog', {...env, VERSION: '5.0.0', RELEASE_NOTES: notes})
+    expect(result.status).toBe(0)
+    const content = readFileSync(path.join(directory, 'CHANGELOG.md'), 'utf8')
+    expect(content.startsWith(history)).toBe(true)
+    expect(content).toContain(notes)
+    expect(existsSync(path.join(directory, 'injected'))).toBe(false)
+    expect(existsSync(path.join(directory, 'injected-too'))).toBe(false)
+    const prepared = git('rev-parse', 'HEAD')
+    expect(prepared).not.toBe(env.SOURCE_SHA)
+    expect(git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')).toBe('CHANGELOG.md')
+    expect(git('diff', '--cached', '--name-only')).toBe('README.md')
+    expect(git('ls-remote', 'origin', 'refs/heads/release').split(/\s/)[0]).toBe(prepared)
+    expectMaintenanceCommit()
+    expect(execute('Capture release target', env).status).toBe(0)
+    expect(readFileSync(path.join(directory, 'job-output'), 'utf8')).toBe(`sha=${prepared}\n`)
+  })
+
+  test('preparation creates and commits a new changelog', () => {
+    const env = environment()
+    expect(existsSync(path.join(directory, 'CHANGELOG.md'))).toBe(false)
+    expect(execute('Prepare changelog', {...env, RELEASE_NOTES: 'release notes'}).status).toBe(0)
+    expect(readFileSync(path.join(directory, 'CHANGELOG.md'), 'utf8')).toMatch(
+      /^# Changelog\n\n## \d{4}-\d{2}-\d{2} - v1\.0\.0\n\nrelease notes\n$/,
+    )
+    expect(git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')).toBe('CHANGELOG.md')
+    expect(git('ls-remote', 'origin', 'refs/heads/release').split(/\s/)[0]).toBe(git('rev-parse', 'HEAD'))
+  })
+
+  test.each(['## v1.0.0\n', '## 2020-01-01 - v1.0.0\r\n'])('preparation refuses an already-prepared version in %j', heading => {
+    const env = environment()
+    const content = '# Changelog\n\n' + heading
+    writeFileSync(path.join(directory, 'CHANGELOG.md'), content)
+    const result = execute('Prepare changelog', {...env, RELEASE_NOTES: 'notes'})
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain('Changelog already contains this version')
+    expect(readFileSync(path.join(directory, 'CHANGELOG.md'), 'utf8')).toBe(content)
+    expect(git('rev-parse', 'HEAD')).toBe(env.SOURCE_SHA)
+  })
+
+  test('preparation rejects a changed branch before editing and can capture an unprepared source', () => {
+    const env = environment()
+    const advanced = advanceBranch(env.SOURCE_SHA)
+    const result = execute('Prepare changelog', {...env, RELEASE_NOTES: 'notes'})
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain('Release branch changed')
+    expect(existsSync(path.join(directory, 'CHANGELOG.md'))).toBe(false)
+    expect(git('ls-remote', 'origin', 'refs/heads/release').split(/\s/)[0]).toBe(advanced)
+    expect(execute('Capture release target', env).status).toBe(0)
+    expect(readFileSync(path.join(directory, 'job-output'), 'utf8')).toBe(`sha=${env.SOURCE_SHA}\n`)
+  })
+
+  test.each(['version', 'notes', 'result', 'branch'])('publication rejects a changed %s before the publishing step', field => {
+    const env = environment()
+    const plan = {
+      ...env, RELEASE_SHA: env.SOURCE_SHA, EXPECTED_VERSION: '1.0.0', EXPECTED_NOTES: 'literal\nnotes',
+      ACTUAL_VERSION: '1.0.0', ACTUAL_NOTES: 'literal\nnotes', ACTUAL_RESULT: 'SUCCESS',
+    }
+    expect(execute('Check publication plan', plan).status).toBe(0)
+    if (field === 'branch') {
+      advanceBranch(env.SOURCE_SHA)
+    } else {
+      const key = {version: 'ACTUAL_VERSION', notes: 'ACTUAL_NOTES', result: 'ACTUAL_RESULT'}[field]
+      plan[key] = {version: '1.0.1', notes: 'different\nnotes', result: 'SKIPPED'}[field]
+    }
+    expect(execute('Check publication plan', plan).status).toBe(1)
+  })
+
+  test('cleanup skips an absent optional metadata file without creating it', () => {
+    const env = environment()
+    const result = execute('Optional metadata cleanup', {...env, RELEASE_SHA: env.SOURCE_SHA})
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('No metadata file to clean')
+    expect(existsSync(path.join(directory, '.semrelease'))).toBe(false)
+    expect(git('rev-parse', 'HEAD')).toBe(env.SOURCE_SHA)
+  })
+
+  test('cleanup rejects branch movement without editing published metadata', () => {
+    const env = environment()
+    mkdirSync(path.join(directory, '.semrelease'))
+    const metadata = path.join(directory, '.semrelease', 'this_release')
+    const original = '#!VERSION=1.0.0\n- fix: repair the parser\n'
+    writeFileSync(metadata, original)
+    git('add', '.semrelease/this_release')
+    git('commit', '--quiet', '-m', 'release metadata')
+    git('push', '--quiet', 'origin', 'HEAD:release')
+    const published = git('rev-parse', 'HEAD')
+    const advanced = advanceBranch(published)
+    const result = execute('Optional metadata cleanup', {...env, RELEASE_SHA: published})
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain('finish cleanup separately')
+    expect(readFileSync(metadata, 'utf8')).toBe(original)
+    expect(git('rev-parse', 'HEAD')).toBe(published)
+    expect(git('ls-remote', 'origin', 'refs/heads/release').split(/\s/)[0]).toBe(advanced)
+  })
+
+  test('cleanup is scoped and idempotent and leaves the release tag pinned', () => {
+    const env = environment()
+    mkdirSync(path.join(directory, '.semrelease'))
+    const metadata = path.join(directory, '.semrelease', 'this_release')
+    const original = '#!VERSION=1.0.0\n- fix: repair the parser\n'
+    writeFileSync(metadata, original)
+    git('add', '.semrelease/this_release')
+    git('commit', '--quiet', '-m', 'release metadata')
+    git('push', '--quiet', 'origin', 'HEAD:release')
+    const published = git('rev-parse', 'HEAD')
+    git('tag', 'v1.0.0', published)
+    git('push', '--quiet', 'origin', 'refs/tags/v1.0.0')
+    writeFileSync(path.join(directory, 'README.md'), 'unrelated staged change')
+    git('add', 'README.md')
+    expect(execute('Optional metadata cleanup', {...env, RELEASE_SHA: published}).status).toBe(0)
+    expect(readFileSync(metadata, 'utf8')).toBe('# Released v1.0.0.\n')
+    const cleaned = git('rev-parse', 'HEAD')
+    expect(cleaned).not.toBe(published)
+    expect(git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')).toBe('.semrelease/this_release')
+    expect(git('diff', '--cached', '--name-only')).toBe('README.md')
+    expect(git('ls-remote', 'origin', 'refs/heads/release').split(/\s/)[0]).toBe(cleaned)
+    expect(git('ls-remote', 'origin', 'refs/tags/v1.0.0').split(/\s/)[0]).toBe(published)
+    expectMaintenanceCommit()
+    expect(execute('Optional metadata cleanup', {...env, RELEASE_SHA: cleaned}).status).toBe(0)
+    expect(git('rev-parse', 'HEAD')).toBe(cleaned)
+  })
 })

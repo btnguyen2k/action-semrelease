@@ -242,227 +242,172 @@ If the `.semrelease/this_release` file does not exist or contains no commit mess
 
 ### Pre-release preparation and Post-release cleanup
 
-This action leaves the content of the `.semrelease/this_release` file unchanged after the release is created. The repository owner must manually clean up the file content. The following code snippet illustrates how to clean up the `.semrelease/this_release` file after a release is created:
+Preparation and cleanup are optional, repository-owned steps. The action never edits `.semrelease/this_release`: you may keep, update or clear its content. Retained messages and version directives will still be evaluated on later runs.
 
-Pin the source commit once, then use it for both checkout and `target-sha`. Changing the checkout alone does not change the action's metadata reads or release target.
+This workflow fragment optionally appends release notes to `CHANGELOG.md` before publishing, then optionally clears `.semrelease/this_release`. The changelog is an output, not a source of release metadata. Preview mode skips commits, pushes and publication; change `DRY_RUN` to `'false'` to publish.
+
+Run this for a commit on the release branch, with a token and branch policy that permit the shown pushes. Share the concurrency group with all publishers of this release stream. Preparation is committed and pushed before verification/publication use its SHA; add project-specific checks before publishing if preparation changes code or build outputs.
 
 ```yaml
 env:
-  BRANCH_TO_RELEASE: 'release'
+  RELEASE_BRANCH: 'release'
   TAG_PREFIX: 'v'
+  DRY_RUN: 'true'
+  PREPARE_CHANGELOG: 'true'
+  CLEANUP_RELEASE_FILE: 'false'
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: release-publication
+  cancel-in-progress: false
 
 jobs:
-  pin:
-    runs-on: ubuntu-latest
-    outputs:
-      target-sha: ${{ steps.capture.outputs.target-sha }}
-    steps:
-      - name: Capture source commit
-        id: capture
-        env:
-          SOURCE_SHA: ${{ github.sha }}
-        run: |
-          printf 'target-sha=%s\n' "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-
-  dryrun:
-    runs-on: ubuntu-latest
-    needs: [ pin ]
-    permissions:
-      contents: read
-    outputs:
-      RESULT: ${{ steps.preview.outputs.result }}
-      VERSION: ${{ steps.preview.outputs.releaseVersion }}
-      RELEASE_NOTES: ${{ steps.preview.outputs.releaseNotes }}
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.pin.outputs.target-sha }}
-      - name: Preview release
-        id: preview
-        uses: btnguyen2k/action-semrelease@v5
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          target-sha: ${{ needs.pin.outputs.target-sha }}
-          branches: ${{ env.BRANCH_TO_RELEASE }}
-          tag-prefix: ${{ env.TAG_PREFIX }}
-          dry-run: true
-
   release:
     runs-on: ubuntu-latest
-    if: |
-      needs.dryrun.outputs.RESULT == 'SUCCESS'
-    needs: [ pin, dryrun ]
-    outputs:
-      RESULT: ${{ steps.semrelease.outputs.result }}
-      VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
-      RELEASE_NOTES: ${{ steps.semrelease.outputs.releaseNotes }}
     permissions:
-      contents: write # to be able to publish a GitHub release and commit back to repo
+      contents: write
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          ref: ${{ needs.pin.outputs.target-sha }}
-      - name: SemRelease
-        id: semrelease
-        uses: btnguyen2k/action-semrelease@v5
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          target-sha: ${{ needs.pin.outputs.target-sha }}
-          branches: ${{ env.BRANCH_TO_RELEASE }}
-          tag-prefix: ${{ env.TAG_PREFIX }}
-      - name: Cleanup file .semrelease/this_release
-        env:
-          RESULT: ${{ steps.semrelease.outputs.result }}
-          VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
+          ref: ${{ github.sha }}
+
+      - name: Read release settings
+        id: source
         run: |
-          if [ "${RESULT}" == "SUCCESS" ]; then
-            echo "🕘 Cleaning up file .semrelease/this_release..."
-            echo "# This file has been cleaned up post-releasing version ${VERSION}." > .semrelease/this_release
-            echo "# Generate its content quickly using the following command:" >> .semrelease/this_release
-            echo "#   git log origin..HEAD | grep \"^\s\" > .semrelease/this_release" >> .semrelease/this_release
-            git config --global user.email "<>"
-            git config --global user.name "CI Build"
-            git commit -am "Cleanup file .semrelease/this_release post releasing version ${VERSION}"
-            git push origin "HEAD:refs/heads/${BRANCH_TO_RELEASE}"
-            echo "✅ Done."
-          else
-            echo "❎ SKIPPED."
+          for flag in DRY_RUN PREPARE_CHANGELOG CLEANUP_RELEASE_FILE; do
+            case "${!flag}" in
+              true|false) ;;
+              *) echo "::error::${flag} must be true or false"; exit 1 ;;
+            esac
+          done
+          dry_run=$DRY_RUN
+          if [[ -e .semrelease-dry-run ]]; then dry_run=true; fi
+          printf 'sha=%s\ndry-run=%s\n' "$(git rev-parse HEAD)" "$dry_run" >> "$GITHUB_OUTPUT"
+          if [[ "$dry_run" == true ]]; then
+            echo "::notice::Preview only; preparation, publication and cleanup are skipped"
           fi
-```
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-Similarly, the repository owner may wish to update the content of the changelog file (e.g., `CHANGELOG.md`) before a release is created so that the changelog can be included in the release. The following code snippet illustrates how to prepare the `CHANGELOG.md` file for a release:
-
-The `prepare` job starts from the pinned source, commits and pushes its changes, then exposes `release-sha`. The publishing job checks out that prepared commit and passes it as `target-sha`, so the release includes the metadata changes.
-
-```yaml
-env:
-  BRANCH_TO_RELEASE: 'release'
-  TAG_PREFIX: 'v'
-  FILE_CHANGELOG: 'CHANGELOG.md'
-
-jobs:
-  pin:
-    runs-on: ubuntu-latest
-    outputs:
-      target-sha: ${{ steps.capture.outputs.target-sha }}
-    steps:
-      - name: Capture source commit
-        id: capture
-        env:
-          SOURCE_SHA: ${{ github.sha }}
-        run: |
-          printf 'target-sha=%s\n' "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-
-  dryrun:
-    runs-on: ubuntu-latest
-    needs: [ pin ]
-    permissions:
-      contents: read
-    outputs:
-      RESULT: ${{ steps.preview.outputs.result }}
-      VERSION: ${{ steps.preview.outputs.releaseVersion }}
-      RELEASE_NOTES: ${{ steps.preview.outputs.releaseNotes }}
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.pin.outputs.target-sha }}
-      - name: Preview release
-        id: preview
+      - name: Plan release
+        id: plan
         uses: btnguyen2k/action-semrelease@v5
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          target-sha: ${{ needs.pin.outputs.target-sha }}
-          branches: ${{ env.BRANCH_TO_RELEASE }}
+          target-sha: ${{ steps.source.outputs.sha }}
+          branches: ${{ env.RELEASE_BRANCH }}
           tag-prefix: ${{ env.TAG_PREFIX }}
           dry-run: true
 
-  prepare:
-    runs-on: ubuntu-latest
-    if: |
-      needs.dryrun.outputs.RESULT == 'SUCCESS'
-    needs: [ pin, dryrun ]
-    outputs:
-      release-sha: ${{ steps.commit.outputs.release-sha }}
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.pin.outputs.target-sha }}
-      - name: Update metadata
+      - name: Prepare changelog
+        if: >-
+          steps.plan.outputs.result == 'SUCCESS' &&
+          steps.source.outputs.dry-run == 'false' &&
+          env.PREPARE_CHANGELOG == 'true'
         env:
-          VERSION: ${{ needs.dryrun.outputs.VERSION }}
-          RELEASE_NOTES: ${{ needs.dryrun.outputs.RELEASE_NOTES }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          VERSION: ${{ steps.plan.outputs.releaseVersion }}
+          RELEASE_NOTES: ${{ steps.plan.outputs.releaseNotes }}
         run: |
-          echo "🕘 Updating metadata..."
-          DATE=$(date +%Y-%m-%d)
+          REMOTE_SHA=$(git ls-remote --exit-code origin "refs/heads/${RELEASE_BRANCH}" | cut -f1)
+          if [[ "$REMOTE_SHA" != "$SOURCE_SHA" ]]; then
+            echo "::error::Release branch changed; inspect the pinned source before retrying"
+            exit 1
+          fi
+          if [[ -f CHANGELOG.md ]] && awk -v tag="${TAG_PREFIX}${VERSION}" \
+            '{ sub(/\r$/, "") } $1 == "##" && $NF == tag { found = 1 } END { exit !found }' CHANGELOG.md; then
+            echo "::error::Changelog already contains this version; inspect the previous preparation"
+            exit 1
+          fi
+          if [[ ! -f CHANGELOG.md ]]; then printf '# Changelog\n' > CHANGELOG.md; fi
+          printf '\n## %s - %s%s\n\n%s\n' "$(date +%F)" "$TAG_PREFIX" "$VERSION" "$RELEASE_NOTES" >> CHANGELOG.md
+          git add -- CHANGELOG.md
+          if ! git diff --cached --quiet -- CHANGELOG.md; then
+            git commit -m "docs: prepare ${TAG_PREFIX}${VERSION} [skip ci]" -- CHANGELOG.md
+            git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
+          fi
 
-          echo "🕘 Updating file ${FILE_CHANGELOG}..."
-
-          # save the first line of the change log file, which is usually the header
-          head -1 "$FILE_CHANGELOG" > .temp.md
-
-          # append new version number, release date and release notes
-          printf '\n## %s - %s%s\n\n%s\n' "$DATE" "$TAG_PREFIX" "$VERSION" "$RELEASE_NOTES" >> .temp.md
-
-          # append the existing content of the change log file
-          # this way, the new version will be at the top of the change log
-          tail -n +2 "$FILE_CHANGELOG" >> .temp.md
-
-          # replace the change log file with the new content
-          mv -f .temp.md "$FILE_CHANGELOG"
-
-          echo "---------- content of ${FILE_CHANGELOG} ----------"
-          cat "$FILE_CHANGELOG"
-
-          # OPTIONAL: replace the placeholder v4.0.0-rc2 in document/source files
-          echo "🕘 Updating VERSION string in other files..."
-          sed -i -E "s/v4.0.0-rc2/${TAG_PREFIX}${VERSION}/" ./*.md
-          sed -i -E "s/v4.0.0-rc2/${TAG_PREFIX}${VERSION}/" ./src/*.js
-          sed -i -E "s/v4.0.0-rc2/${TAG_PREFIX}${VERSION}/" ./test/*.js
-
-          echo "✅ Done."
-      - name: Commit prepared release
-        id: commit
-        env:
-          VERSION: ${{ needs.dryrun.outputs.VERSION }}
+      - name: Capture release target
+        id: target
+        if: steps.plan.outputs.result == 'SUCCESS' && steps.source.outputs.dry-run == 'false'
         run: |
-          echo "🕘 Committing metadata updates..."
-          git config --global user.email "<>"
-          git config --global user.name "CI Build"
-          git commit -am "Update metadata for new version ${VERSION}"
-          git push origin "HEAD:refs/heads/${BRANCH_TO_RELEASE}"
-          printf 'release-sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-          echo "✅ Done."
-
-  release:
-    runs-on: ubuntu-latest
-    needs: [ prepare, dryrun ]
-    outputs:
-      RESULT: ${{ steps.semrelease.outputs.result }}
-      VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
-      RELEASE_NOTES: ${{ steps.semrelease.outputs.releaseNotes }}
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout prepared release
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.release-sha }}
-      - name: SemRelease
-        id: semrelease
+      - name: Verify release target
+        id: verify
+        if: steps.plan.outputs.result == 'SUCCESS' && steps.source.outputs.dry-run == 'false'
         uses: btnguyen2k/action-semrelease@v5
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          target-sha: ${{ needs.prepare.outputs.release-sha }}
-          branches: ${{ env.BRANCH_TO_RELEASE }}
+          target-sha: ${{ steps.target.outputs.sha }}
+          branches: ${{ env.RELEASE_BRANCH }}
           tag-prefix: ${{ env.TAG_PREFIX }}
+          dry-run: true
+
+      - name: Check publication plan
+        if: steps.plan.outputs.result == 'SUCCESS' && steps.source.outputs.dry-run == 'false'
+        env:
+          EXPECTED_VERSION: ${{ steps.plan.outputs.releaseVersion }}
+          EXPECTED_NOTES: ${{ steps.plan.outputs.releaseNotes }}
+          ACTUAL_RESULT: ${{ steps.verify.outputs.result }}
+          ACTUAL_VERSION: ${{ steps.verify.outputs.releaseVersion }}
+          ACTUAL_NOTES: ${{ steps.verify.outputs.releaseNotes }}
+          RELEASE_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          if [[ "$ACTUAL_RESULT" != SUCCESS || "$ACTUAL_VERSION" != "$EXPECTED_VERSION" || "$ACTUAL_NOTES" != "$EXPECTED_NOTES" ]]; then
+            echo "::error::Release target no longer matches the original plan; inspect before retrying"
+            exit 1
+          fi
+          REMOTE_SHA=$(git ls-remote --exit-code origin "refs/heads/${RELEASE_BRANCH}" | cut -f1)
+          if [[ "$REMOTE_SHA" != "$RELEASE_SHA" ]]; then
+            echo "::error::Release branch changed after preparation; inspect before retrying"
+            exit 1
+          fi
+
+      - name: Publish release
+        id: publish
+        if: steps.plan.outputs.result == 'SUCCESS' && steps.source.outputs.dry-run == 'false'
+        uses: btnguyen2k/action-semrelease@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ steps.target.outputs.sha }}
+          branches: ${{ env.RELEASE_BRANCH }}
+          tag-prefix: ${{ env.TAG_PREFIX }}
+          dry-run: false
+
+      - name: Optional metadata cleanup
+        if: >-
+          steps.publish.outputs.result == 'SUCCESS' &&
+          steps.source.outputs.dry-run == 'false' &&
+          env.CLEANUP_RELEASE_FILE == 'true'
+        env:
+          VERSION: ${{ steps.publish.outputs.releaseVersion }}
+          RELEASE_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          if [[ ! -f .semrelease/this_release ]]; then
+            echo "::notice::No metadata file to clean"
+            exit 0
+          fi
+          REMOTE_SHA=$(git ls-remote --exit-code origin "refs/heads/${RELEASE_BRANCH}" | cut -f1)
+          if [[ "$REMOTE_SHA" != "$RELEASE_SHA" ]]; then
+            echo "::error::Release published, but the branch changed; finish cleanup separately"
+            exit 1
+          fi
+          printf '# Released %s%s.\n' "$TAG_PREFIX" "$VERSION" > .semrelease/this_release
+          git add -- .semrelease/this_release
+          if git diff --cached --quiet -- .semrelease/this_release; then
+            echo "::notice::Metadata already clean"
+            exit 0
+          fi
+          git commit -m "chore: clear release metadata after ${TAG_PREFIX}${VERSION} [skip ci]" -- .semrelease/this_release
+          git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
 ```
+
+Cleanup creates a later branch commit; the version tag stays on the published commit. A changed branch, existing changelog version or changed plan stops the workflow rather than overwriting state. Failed runs are not rolled back: inspect the branch, tags, release and assets before retrying. If publication succeeded but cleanup failed, finish the chosen cleanup separately instead of blindly publishing again.
 
 ## License
 
