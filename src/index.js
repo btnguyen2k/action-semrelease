@@ -1,7 +1,7 @@
-const core = require('@actions/core')
+import * as core from '@actions/core'
+import * as app from './app.js'
 
 async function run() {
-  const app = require('./app')
   const {result, releaseVersion, releaseNotes} = await app.semrelease()
   core.setOutput('result', result)
   core.setOutput('releaseVersion', releaseVersion)

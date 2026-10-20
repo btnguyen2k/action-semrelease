@@ -2,19 +2,62 @@ name: "test"
 
 on:
   push:
-    branches: [ '*' ]
   pull_request:
     types: [ opened, edited, reopened, synchronize, review_requested ]
-    branches: [ '*' ]
   workflow_call:
+    inputs:
+      target-sha:
+        description: 'Pinned commit SHA to test; defaults to the workflow context SHA'
+        required: false
+        type: string
+        default: ''
+      packaged:
+        description: 'Test the committed action bundle without rebuilding it'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
+  pin:
+    runs-on: ubuntu-latest
+    outputs:
+      target-sha: ${{ steps.capture.outputs.target-sha }}
+      action-target-sha: ${{ steps.capture.outputs.action-target-sha }}
+      action-branch: ${{ steps.capture.outputs.action-branch }}
+      push-branch: ${{ steps.capture.outputs.push-branch }}
+    steps:
+      - name: Capture pinned commit SHA
+        id: capture
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target-sha || github.sha }}
+          PR_BASE_SHA: ${{ !inputs.target-sha && github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          PR_BASE_BRANCH: ${{ !inputs.target-sha && github.event_name == 'pull_request' && github.event.pull_request.base.ref || '' }}
+          PUSH_BRANCH: ${{ !inputs.target-sha && github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name || '' }}
+        run: |
+          if [[ ! "$TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::target-sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          printf 'target-sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          ACTION_TARGET_SHA="${PR_BASE_SHA:-$TARGET_SHA}"
+          if [[ ! "$ACTION_TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::Action target must be a full 40-character commit SHA"
+            exit 1
+          fi
+          printf 'action-target-sha=%s\n' "$ACTION_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          printf 'action-branch=%s\n' "$PR_BASE_BRANCH" >> "$GITHUB_OUTPUT"
+          printf 'push-branch=%s\n' "$PUSH_BRANCH" >> "$GITHUB_OUTPUT"
+
   # lint
   lint:
     runs-on: ubuntu-latest
+    needs: [pin]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
@@ -27,9 +70,14 @@ jobs:
   # unit tests
   units:
     runs-on: ubuntu-latest
+    needs: [pin]
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
@@ -37,44 +85,51 @@ jobs:
       - name: Install Dependencies
         run: npm ci
       - name: Run Tests
-        run: |
-          export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-          npm run test
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v7
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run test
+      - name: Upload coverage reports to Codecov
+        if: ${{ env.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v7
 
   # test the action itself
   test_non_auto:
     runs-on: ubuntu-latest
-    needs: [lint, units]
+    needs: [pin, lint, units]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
           node-version: 'lts/*'
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Rebuild the dist/ directory
+        if: ${{ !inputs.packaged }}
         run: npm run prepare
-      - name: Run Action (non-auto)
-        id: run-action-non-auto
+      - name: Run Action (default branches)
+        id: run-action-default
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ needs.pin.outputs.action-target-sha }}
           dry-run: true
           tag-prefix: vt
-      - name: Check output (non-auto)
+          branches: ${{ needs.pin.outputs.action-branch || needs.pin.outputs.push-branch || github.base_ref || github.ref_name }}
+      - name: Check output (default branches)
+        env:
+          RESULT: ${{ steps.run-action-default.outputs.result }}
+          VERSION: ${{ steps.run-action-default.outputs.releaseVersion }}
+          RELEASE_NOTES: ${{ steps.run-action-default.outputs.releaseNotes }}
         run: |
-          RESULT='${{ steps.run-action-non-auto.outputs.result }}'
-          VERSION='${{ steps.run-action-non-auto.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-non-auto.outputs.releaseNotes }}'
-          echo -e Result: ${RESULT}
-          echo -e Version: ${VERSION}
-          echo -e Release Notes: ${RELEASE_NOTES}
+          printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
+          if [ "$RESULT" != "SUCCESS" ] && [ "$RESULT" != "SKIPPED" ]; then
+            echo "::error::Action result must be SUCCESS or SKIPPED"
+            exit 1
+          fi
           if [ "${RESULT}" == "SUCCESS" ]; then
             cp -f package.json package.json.bak
             sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
@@ -86,41 +141,47 @@ jobs:
   # test the action itself
   test_auto:
     runs-on: ubuntu-latest
-    needs: [lint, units]
+    needs: [pin, lint, units]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
           node-version: 'lts/*'
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Rebuild the dist/ directory
+        if: ${{ !inputs.packaged }}
         run: npm run prepare
-      - name: Run Action (auto-mode)
-        id: run-action-auto-mode
+      - name: Run Action (branch scan)
+        id: run-action-branches
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ needs.pin.outputs.action-target-sha }}
           dry-run: true
-          auto-mode: true
-          branches: main, release, dev, not-exists
+          branches: ${{ format('{0}, not-exists', needs.pin.outputs.action-branch || needs.pin.outputs.push-branch || github.base_ref || github.ref_name) }}
           tag-prefix: va
-      - name: Check output (auto-mode)
+      - name: Check output (branch scan)
+        env:
+          RESULT: ${{ steps.run-action-branches.outputs.result }}
+          VERSION: ${{ steps.run-action-branches.outputs.releaseVersion }}
+          RELEASE_NOTES: ${{ steps.run-action-branches.outputs.releaseNotes }}
         run: |
-          RESULT='${{ steps.run-action-auto-mode.outputs.result }}'
-          VERSION='${{ steps.run-action-auto-mode.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-auto-mode.outputs.releaseNotes }}'
-          echo -e Result: ${RESULT}
-          echo -e Version: ${VERSION}
-          echo -e Release Notes: ${RELEASE_NOTES}
+          printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
+          if [ "$RESULT" != "SUCCESS" ] && [ "$RESULT" != "SKIPPED" ]; then
+            echo "::error::Action result must be SUCCESS or SKIPPED"
+            exit 1
+          fi
           if [ "${RESULT}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
             cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
             cp -f package.json package.json.bak
             head -1 RELEASE-NOTES.md > .temp.md
-            echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
+            printf '\n## %s - v%s\n\n%s\n' "$DATE" "$VERSION" "$RELEASE_NOTES" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
             mv -f .temp.md RELEASE-NOTES.md
             echo ---------- content of RELEASE-NOTES.md ----------
@@ -135,41 +196,47 @@ jobs:
   # test the action itself
   test_dry_run:
     runs-on: ubuntu-latest
-    needs: [lint, units]
+    needs: [pin, lint, units]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
           node-version: 'lts/*'
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Rebuild the dist/ directory
+        if: ${{ !inputs.packaged }}
         run: npm run prepare
       - name: Run Action (dry-run)
         id: run-action-dry-run
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ needs.pin.outputs.action-target-sha }}
           dry-run: true
-          auto-mode: true
-          branches: main, release, dev, not-exists
+          branches: ${{ format('{0}, not-exists', needs.pin.outputs.action-branch || needs.pin.outputs.push-branch || github.base_ref || github.ref_name) }}
           tag-prefix: v
       - name: Check output (dry-run)
+        env:
+          RESULT: ${{ steps.run-action-dry-run.outputs.result }}
+          VERSION: ${{ steps.run-action-dry-run.outputs.releaseVersion }}
+          RELEASE_NOTES: ${{ steps.run-action-dry-run.outputs.releaseNotes }}
         run: |
-          RESULT='${{ steps.run-action-dry-run.outputs.result }}'
-          VERSION='${{ steps.run-action-dry-run.outputs.releaseVersion }}'
-          RELEASE_NOTES='${{ steps.run-action-dry-run.outputs.releaseNotes }}'
-          echo -e Result: ${RESULT}
-          echo -e Version: ${VERSION}
-          echo -e Release Notes: ${RELEASE_NOTES}
+          printf 'Result: %s\nVersion: %s\nRelease Notes: %s\n' "$RESULT" "$VERSION" "$RELEASE_NOTES"
+          if [ "$RESULT" != "SUCCESS" ] && [ "$RESULT" != "SKIPPED" ]; then
+            echo "::error::Action result must be SUCCESS or SKIPPED"
+            exit 1
+          fi
           if [ "${RESULT}" == "SUCCESS" ]; then
             DATE=`date +%Y-%m-%d`
             cp -f RELEASE-NOTES.md RELEASE-NOTES.md.bak
             cp -f package.json package.json.bak
             head -1 RELEASE-NOTES.md > .temp.md
-            echo -e "\n## ${DATE} - v${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
+            printf '\n## %s - v%s\n\n%s\n' "$DATE" "$VERSION" "$RELEASE_NOTES" >> .temp.md
             tail -n +2 RELEASE-NOTES.md >> .temp.md
             mv -f .temp.md RELEASE-NOTES.md
             echo ---------- content of RELEASE-NOTES.md ----------

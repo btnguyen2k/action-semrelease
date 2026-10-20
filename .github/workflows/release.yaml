@@ -11,13 +11,38 @@ env:
   TAG_PREFIX: 'v'
   FILE_CHANGELOG: 'RELEASE-NOTES.md'
 
+concurrency:
+  group: release-publication
+  cancel-in-progress: false
+
 jobs:
+  pin:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      target-sha: ${{ steps.capture.outputs.target-sha }}
+    steps:
+      - name: Capture pinned commit SHA
+        id: capture
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$TARGET_SHA" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::target-sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          printf 'target-sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
   callTest:
+    needs: [ pin ]
     uses: ./.github/workflows/test.yaml
+    with:
+      target-sha: ${{ needs.pin.outputs.target-sha }}
 
   dryrun:
     runs-on: ubuntu-latest
-    needs: [ callTest ]
+    needs: [ pin, callTest ]
     if: |
       github.event.pull_request.merged == true
     outputs:
@@ -27,12 +52,14 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
           node-version: 'lts/*'
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Rebuild the dist/ directory
         run: npm run prepare
       - name: Release (dry-run)
@@ -40,72 +67,47 @@ jobs:
         uses: ./ # The repo itself is the action, and is always the latest
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ needs.pin.outputs.target-sha }}
           dry-run: true
-          auto-mode: true
           tag-major-release: true
           tag-minor-release: true
           branches: ${{ env.BRANCH_TO_RELEASE }}
 
-  release:
+  prepare:
     runs-on: ubuntu-latest
     if: |
       needs.dryrun.outputs.RESULT == 'SUCCESS'
-    needs: [ dryrun ]
+    needs: [ pin, dryrun ]
     outputs:
-      RESULT: ${{ steps.semrelease.outputs.result }}
-      VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
-      RELEASE_NOTES: ${{ steps.semrelease.outputs.releaseNotes }}
+      release-sha: ${{ steps.commit.outputs.release-sha }}
     permissions:
-      contents: write # to be able to publish a GitHub release and commit back to repo
+      contents: write # to push the prepared release commit
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pin.outputs.target-sha }}
       - name: Install Node
         uses: actions/setup-node@v7
         with:
           node-version: 'lts/*'
       - name: Install Dependencies
-        run: npm ci
-      - name: ensure dist/
-        # `dist/index.js` is a special file in Actions.
-        # When you reference an action with `uses:` in a workflow,
-        # `index.js` is the code that will run.
-        # For our project, we generate this file through a build process from other source files.
-        # We need to make sure the checked-in `index.js` actually matches what we expect it to be.
-        run: |
-          echo "🕘 Rebuilding the dist/ directory..."
-          rm dist/*
-          npm run prepare
-
-          echo "🕘 Syncing dist/ directories..."
-          git diff --ignore-space-at-eol dist/
-          if [ "$(git diff --ignore-space-at-eol dist/ | wc -l)" -gt "0" ]; then
-            echo "ℹ️ Detected uncommitted changes after build. See status below:"
-            git diff
-            echo "🕜 Committing changes to dist/..."
-            git config --global user.email "<>"
-            git config --global user.name "CI Build"
-            git commit -am "build [skip ci]"
-            echo "🕜 Pushing changes to dist/..."
-            git push -f
-            echo "✅ Done."
-          else
-            echo "❎ No changes detected after build."
-          fi
+        run: npm ci --ignore-scripts
       - name: Update metadata
+        env:
+          VERSION: ${{ needs.dryrun.outputs.VERSION }}
+          RELEASE_NOTES: ${{ needs.dryrun.outputs.RELEASE_NOTES }}
         run: |
           echo "🕘 Updating metadata..."
-          DATE=`date +%Y-%m-%d`
-          VERSION='${{ needs.dryrun.outputs.VERSION }}'
-          RELEASE_NOTES='${{ needs.dryrun.outputs.RELEASE_NOTES }}'
-
-          echo "🕘 Updating file ${{ env.FILE_CHANGELOG }}..."
-          head -1 ${{ env.FILE_CHANGELOG }} > .temp.md
-          echo -e "\n## ${DATE} - ${{ env.TAG_PREFIX }}${VERSION}\n\n${RELEASE_NOTES}" >> .temp.md
-          tail -n +2 ${{ env.FILE_CHANGELOG }} >> .temp.md
-          mv -f .temp.md ${{ env.FILE_CHANGELOG }}
-          echo "---------- content of ${{ env.FILE_CHANGELOG }} ----------"
-          cat ${{ env.FILE_CHANGELOG }}
+          DATE=$(date +%Y-%m-%d)
+          if awk -v tag="${TAG_PREFIX}${VERSION}" '$1 == "##" && $3 == "-" && $4 == tag { found = 1 } END { exit !found }' "$FILE_CHANGELOG"; then
+            echo "::error::Changelog already contains this version; inspect the earlier publication before retrying"
+            exit 1
+          fi
+          head -1 "$FILE_CHANGELOG" > .temp.md
+          printf '\n## %s - %s%s\n\n%s\n' "$DATE" "$TAG_PREFIX" "$VERSION" "$RELEASE_NOTES" >> .temp.md
+          tail -n +2 "$FILE_CHANGELOG" >> .temp.md
+          mv -f .temp.md "$FILE_CHANGELOG"
 
           echo "🕘 Updating VERSION string in file package.json..."
           sed -i -E "s/^(\s*\"version\"\s*:\s*)\"[^\"]+\"/\1\"${VERSION}\"/" package.json
@@ -113,42 +115,126 @@ jobs:
           cat package.json
 
           echo "🕘 Updating VERSION string in other files..."
-          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./*.md
-          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./src/*.js
-          sed -i -E "s/<<VERSION>>/${{ env.TAG_PREFIX }}${VERSION}/" ./test/*.js
-
-          echo "🕘 Committing metadata updates..."
-          git config --global user.email "<>"
-          git config --global user.name "CI Build"
-          git commit -am "Update metadata for new version ${VERSION}"
-          git push -f
+          sed -i -E "s/<<VERSION>>/${TAG_PREFIX}${VERSION}/" ./*.md
+          sed -i -E "s/<<VERSION>>/${TAG_PREFIX}${VERSION}/" ./src/*.js
+          sed -i -E "s/<<VERSION>>/${TAG_PREFIX}${VERSION}/" ./test/*.js
 
           echo "✅ Done."
+      - name: Build release bundle
+        run: npm run prepare
+      - name: Commit prepared release
+        id: commit
+        env:
+          VERSION: ${{ needs.dryrun.outputs.VERSION }}
+          SOURCE_SHA: ${{ needs.pin.outputs.target-sha }}
+        run: |
+          REMOTE_SHA=$(git ls-remote --exit-code origin "refs/heads/${BRANCH_TO_RELEASE}" | cut -f1)
+          if [ "$REMOTE_SHA" != "$SOURCE_SHA" ]; then
+            echo "::error::Release branch advanced beyond the pinned source; refusing to publish stale preparation"
+            exit 1
+          fi
+          git add -- dist/ package.json ./*.md src/ test/
+          if ! git diff --cached --quiet; then
+            git config user.email "<>"
+            git config user.name "CI Build"
+            git commit -m "Prepare release ${VERSION} [skip ci]"
+          fi
+          git push origin "HEAD:${BRANCH_TO_RELEASE}"
+          printf 'release-sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Report preparation failure
+        if: failure()
+        run: echo "::warning::Release preparation failed. Inspect the release branch for a preparation commit before retrying; no automatic rollback was performed."
+
+  testPrepared:
+    needs: [prepare]
+    uses: ./.github/workflows/test.yaml
+    with:
+      target-sha: ${{ needs.prepare.outputs.release-sha }}
+      packaged: true
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [prepare, testPrepared, dryrun]
+    outputs:
+      RESULT: ${{ steps.semrelease.outputs.result }}
+      VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
+      RELEASE_NOTES: ${{ steps.semrelease.outputs.releaseNotes }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout prepared release
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.release-sha }}
+      - name: Verify prepared release
+        id: verify
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ needs.prepare.outputs.release-sha }}
+          dry-run: true
+          tag-major-release: true
+          tag-minor-release: true
+          branches: ${{ env.BRANCH_TO_RELEASE }}
+      - name: Check release plan and branch
+        env:
+          EXPECTED_VERSION: ${{ needs.dryrun.outputs.VERSION }}
+          EXPECTED_NOTES: ${{ needs.dryrun.outputs.RELEASE_NOTES }}
+          ACTUAL_RESULT: ${{ steps.verify.outputs.result }}
+          ACTUAL_VERSION: ${{ steps.verify.outputs.releaseVersion }}
+          ACTUAL_NOTES: ${{ steps.verify.outputs.releaseNotes }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release-sha }}
+        run: |
+          if [ "$ACTUAL_RESULT" != "SUCCESS" ] || [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ] || [ "$ACTUAL_NOTES" != "$EXPECTED_NOTES" ]; then
+            echo "::error::Prepared release no longer matches the original release plan"
+            exit 1
+          fi
+          REMOTE_SHA=$(git ls-remote --exit-code origin "refs/heads/${BRANCH_TO_RELEASE}" | cut -f1)
+          if [ "$REMOTE_SHA" != "$RELEASE_SHA" ]; then
+            echo "::error::Release branch advanced after preparation; inspect before retrying"
+            exit 1
+          fi
       - name: SemRelease
         id: semrelease
         uses: ./ # The repo itself is the action, and is always the latest
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          target-sha: ${{ needs.prepare.outputs.release-sha }}
           tag-major-release: true
           tag-minor-release: true
-          auto-mode: true
           branches: ${{ env.BRANCH_TO_RELEASE }}
       - name: Cleanup file .semrelease/this_release
+        id: cleanup_release_metadata
+        env:
+          RESULT: ${{ steps.semrelease.outputs.result }}
+          VERSION: ${{ steps.semrelease.outputs.releaseVersion }}
         run: |
-          RESULT='${{ steps.semrelease.outputs.result }}'
           if [ "${RESULT}" == "SUCCESS" ]; then
-            VERSION='${{ steps.semrelease.outputs.releaseVersion }}'
             echo "🕘 Cleaning up file .semrelease/this_release..."
             echo "# This file has been cleaned up post-releasing version ${VERSION}." > .semrelease/this_release
             echo "# Generate its content quickly using the following command:" >> .semrelease/this_release
             echo "#   git log origin..HEAD | grep \"^\s\" > .semrelease/this_release" >> .semrelease/this_release
             git config --global user.email "<>"
             git config --global user.name "CI Build"
-            git commit -am "Cleanup file .semrelease/this_release post releasing version ${VERSION}"
-            git push -f
+            git add -- .semrelease/this_release
+            if ! git diff --cached --quiet -- .semrelease/this_release; then
+              git commit -m "Cleanup file .semrelease/this_release post releasing version ${VERSION}" -- .semrelease/this_release
+            fi
+            git push origin "HEAD:${BRANCH_TO_RELEASE}"
             echo "✅ Done."
           else
             echo "❎ SKIPPED."
+          fi
+
+      - name: Report partial release failure
+        if: failure()
+        env:
+          RELEASE_RESULT: ${{ steps.semrelease.outputs.result }}
+        run: |
+          if [ "${RELEASE_RESULT}" == "SUCCESS" ]; then
+            echo "::warning::Release publication succeeded, but a later workflow step failed. Inspect the release and cleanup commit/push; complete the remaining cleanup manually before retrying. Do not delete the successful release or rerun publication blindly."
+          else
+            echo "::warning::Release workflow failed. Earlier steps may have pushed build or metadata commits, created tags/releases, or changed aliases. No automatic rollback was performed. Inspect failed-step logs and remote state; manually clean up or restore only changes from this run before retrying. Do not blindly delete pre-existing tags/releases or revert unrelated commits."
           fi
 
   mergeToMain:
@@ -175,3 +261,7 @@ jobs:
               maintainer_can_modify: true,
             });
             console.log('✅ Created PR: ', pr);
+      - name: Report post-release PR failure
+        if: failure()
+        run: |
+          echo "::warning::Post-release PR creation failed; publication may already have succeeded. Inspect existing release-to-main PRs before retrying because a lost response may hide successful creation. Do not rerun or undo publication to resolve this PR failure."
