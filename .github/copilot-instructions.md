@@ -11,7 +11,6 @@ A JavaScript GitHub Action (`action.yml`, `runs.using: node*`, `main: dist/index
 - Tests: `npm test` (Jest, 60s timeout, coverage)
 - Offline unit tests: `npm test -- test/utils-offline.test.js test/app-offline.test.js --coverage=false` (mocked GitHub APIs; no token or repository setup required). Full-suite coverage thresholds still apply to `npm test`.
 - Single test file: `npm test -- test/rules.test.js`; single test: `npm test -- test/utils.test.js -t "name"`
-- Dry run against the real repo: `npm run dryrun`
 
 Tests call the GitHub API, so they need env vars (see `.dev.md`):
 
