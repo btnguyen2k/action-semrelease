@@ -1,24 +1,3 @@
-# This file has been cleaned up post-releasing version 4.0.0.
+# This file has been cleaned up post-releasing version 5.0.0.
 # Generate its content quickly using the following command:
 #   git log origin..HEAD | grep "^\s" > .semrelease/this_release
-#!VERSION=5.0.0
-- patch(runtime): run the action on Node.js 24
-- BREAKING CHANGE: remove deprecated release metadata inputs
-- feat(release): pin release metadata and tags to the target commit
-- feat(release): accept partial forced versions
-- fix(release): keep exact version tags immutable
-- BREAKING CHANGE: require release targets to belong to configured branches
-- patch(release): report missing release baselines explicitly
-- fix(release): reject incomplete history and baseline pagination
-- patch(api): retry transient reads and rate limits within a bounded budget
-- fix(release): verify tag absence before ignoring delete conflicts
-- patch(release): warn when failed releases need manual cleanup
-- fix(release): reject invalid or ambiguous version directives
-- fix(release): avoid history fallback for pinned file messages
-- patch(release): fail when a release exists without its exact tag
-- BREAKING CHANGE: change tag-major-release default from true to false
-- impr(release): sort messages within each release-note category
-- feat(release): attach current-repository Actions artifacts as unchanged release assets
-- feat(release): add style-check input with warning and failure modes
-- feat(rules): recognize deps and revert as patch release types
-- fix(rules): use header types for version bumps and release-note grouping
