@@ -1,6 +1,6 @@
 # SemRelease release notes
 
-## 2026-10-22 - v0.5.1
+## 2026-10-22 - v5.1.0
 
 ### Added/Refactoring/Deprecation
 
