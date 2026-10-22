@@ -1,5 +1,12 @@
 # SemRelease release notes
 
+## 2026-10-22 - v0.5.1
+
+### Added/Refactoring/Deprecation
+
+- Feat(input): introduce optional input `change-log`
+- Feat(input): introduce optional input `version`
+
 ## 2026-10-20 - v5.0.0
 
 ### Changes
