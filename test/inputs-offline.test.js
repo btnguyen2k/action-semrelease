@@ -16,6 +16,7 @@ const environmentNames = [
   'TAG_ONLY', 'SCAN_PATH',
   'INPUT_ARTIFACT-IDS', 'INPUT_ARTIFACT-RUN-ID',
   'INPUT_STYLE-CHECK',
+  'INPUT_VERSION', 'INPUT_CHANGE-LOG',
 ]
 let savedEnvironment
 let savedDirectory
@@ -49,6 +50,27 @@ describe('target-sha input mapping', () => {
 
   test('missing input falls back to the event SHA', () => {
     expect(getOptions().targetSha).toBe('event-sha')
+  })
+})
+
+describe('release input overrides', () => {
+  test.each([undefined, '', ' \t\r\n '])('missing or empty inputs default to empty strings: %j', value => {
+    if (value !== undefined) {
+      process.env.INPUT_VERSION = value
+      process.env['INPUT_CHANGE-LOG'] = value
+    }
+    expect(getOptions()).toMatchObject({version: '', changeLog: ''})
+  })
+
+  test('version is a trimmed string', () => {
+    process.env.INPUT_VERSION = '  v4.1-rc.1+build.7  '
+    expect(getOptions().version).toBe('v4.1-rc.1+build.7')
+  })
+
+  test('change-log preserves multiple lines and summary whitespace for style checking', () => {
+    const changeLog = '\n  - feat: add a feature\r\n+ fix: repair input \r\n\n'
+    process.env['INPUT_CHANGE-LOG'] = changeLog
+    expect(getOptions().changeLog).toBe(changeLog)
   })
 })
 

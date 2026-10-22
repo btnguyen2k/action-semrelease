@@ -33,6 +33,9 @@ function fileResponse(text) {
 function setReleaseMessages(source, messages) {
   if (source === 'pinned file') {
     octokit.rest.repos.getContent.mockResolvedValue(fileResponse(messages.join('\n')))
+  } else if (source === 'change-log input') {
+    inputs['change-log'] = messages.join('\n')
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(''))
   } else {
     octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
     octokit.rest.repos.listCommits.mockResolvedValue({data: messages.map((message, index) => ({
@@ -885,7 +888,150 @@ test.each([
   assertNoWrites()
 })
 
-describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from %s', source => {
+describe('release input overrides', () => {
+  test.each([
+    ['4', '4.0.0'],
+    ['v4.1', '4.1.0'],
+    ['4.1.2-rc.1+build.7', '4.1.2-rc.1+build.7'],
+  ])('version %s overrides the file version and keeps file messages', async(version, expected) => {
+    inputs.version = version
+    expect(await semrelease()).toEqual({
+      result: 'SUCCESS', releaseVersion: expected,
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: issue',
+    })
+    expect(octokit.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ref: 'target'}))
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    expect(octokit.rest.git.createTag).toHaveBeenCalledWith(expect.objectContaining({
+      tag: `v${expected}`, object: 'target',
+    }))
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith(expect.objectContaining({
+      tag_name: `v${expected}`, prerelease: expected.includes('-rc.1'),
+    }))
+  })
+
+  test.each([
+    '#!VERSION=invalid',
+    '#!VERSION=',
+    '#!VERSION=1.0.0\n#!VERSION=2.0.0',
+  ])('version overrides ignored file directives: %s', async directive => {
+    inputs.version = '4.1'
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(`${directive}\nfix: from file`))
+    expect(await semrelease()).toEqual({
+      result: 'SUCCESS', releaseVersion: '4.1.0',
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: from file',
+    })
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+  })
+
+  test.each([null, '', '#!VERSION=1.2.3'])('version is retained during history fallback for file %j', async text => {
+    inputs.version = '4.1'
+    if (text === null) octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+    else octokit.rest.repos.getContent.mockResolvedValue(fileResponse(text))
+    expect(await semrelease()).toEqual({
+      result: 'SUCCESS', releaseVersion: '4.1.0',
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: from history',
+    })
+    expect(octokit.rest.repos.listCommits).toHaveBeenCalledWith(expect.objectContaining({sha: 'target'}))
+  })
+
+  test('version alone does not release unqualified file messages or fall back to history', async() => {
+    inputs.version = '4.1'
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse('docs: explain usage'))
+    expect((await semrelease()).result).toBe('SKIPPED')
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test.each(['invalid', '1.2.3.4'])('invalid version %s fails even without qualifying messages', async version => {
+    inputs.version = version
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse('docs: explain usage'))
+    await expect(semrelease()).rejects.toThrow(`Invalid version number: ${version}`)
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test.each(['\n', '\r\n'])('multiline change-log with %j uses the file version but ignores file messages', async newline => {
+    inputs['style-check'] = 'true'
+    inputs['change-log'] = ['# Input changes', '', '- feat: add input feature', '+ fix: repair input issue'].join(newline)
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse(
+      '#!VERSION=1.2.3\nbreaking: ignore metadata\nfix: Invalid ignored summary.',
+    ))
+    const releaseNotes = '### Added/Refactoring/Deprecation\n\n- Feat: add input feature'
+      + '\n\n### Fixed/Improvements\n\n- Fix: repair input issue'
+    expect(await semrelease()).toEqual({result: 'SUCCESS', releaseVersion: '1.2.3', releaseNotes})
+    expect(octokit.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ref: 'target'}))
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith(expect.objectContaining({body: releaseNotes}))
+    expect(warning).not.toHaveBeenCalled()
+  })
+
+  test.each([null, '# comment', 'breaking: ignore metadata'])(
+    'change-log determines the automatic bump when file %j has no version', async text => {
+      inputs['change-log'] = 'feat: add input feature'
+      octokit.rest.repos.listReleases.mockResolvedValue({data: [
+        {tag_name: 'v2.3.4', created_at: '2026-01-01T00:00:00Z'},
+      ]})
+      if (text === null) octokit.rest.repos.getContent.mockRejectedValue(apiError(404))
+      else octokit.rest.repos.getContent.mockResolvedValue(fileResponse(text))
+      expect(await semrelease()).toEqual({
+        result: 'SUCCESS', releaseVersion: '2.4.0',
+        releaseNotes: '### Added/Refactoring/Deprecation\n\n- Feat: add input feature',
+      })
+      expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    },
+  )
+
+  test('both inputs bypass metadata reads and commit history', async() => {
+    inputs.version = '4.1'
+    inputs['change-log'] = 'fix: from input'
+    octokit.rest.repos.getContent.mockRejectedValue(apiError(403))
+    expect(await semrelease()).toEqual({
+      result: 'SUCCESS', releaseVersion: '4.1.0',
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: from input',
+    })
+    expect(octokit.rest.repos.getContent).not.toHaveBeenCalled()
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+  })
+
+  test('change-log still validates the file version when version input is absent', async() => {
+    inputs['change-log'] = 'fix: from input'
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse('#!VERSION=invalid\nfix: from file'))
+    await expect(semrelease()).rejects.toThrow('Invalid version number in .semrelease/this_release')
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test.each(['# comment', '-\n+\n=', 'docs: explain usage'])('nonqualifying change-log %j skips without fallback', async changeLog => {
+    inputs['change-log'] = changeLog
+    expect((await semrelease()).result).toBe('SKIPPED')
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    assertNoWrites()
+  })
+
+  test.each([undefined, ''])('missing or empty inputs preserve file metadata: %j', async value => {
+    if (value !== undefined) {
+      inputs.version = value
+      inputs['change-log'] = value
+    }
+    expect(await semrelease()).toEqual({
+      result: 'SUCCESS', releaseVersion: '1.2.3',
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: issue',
+    })
+    expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+  })
+
+  test.each(['', ' \t\r\n '])('empty change-log %j retains file version during history fallback', async changeLog => {
+    inputs['change-log'] = changeLog
+    octokit.rest.repos.getContent.mockResolvedValue(fileResponse('#!VERSION=1.2.3'))
+    expect(await semrelease()).toEqual({
+      result: 'SUCCESS', releaseVersion: '1.2.3',
+      releaseNotes: '### Fixed/Improvements\n\n- Fix: from history',
+    })
+    expect(octokit.rest.repos.listCommits).toHaveBeenCalledWith(expect.objectContaining({sha: 'target'}))
+  })
+})
+
+describe.each(['pinned file', 'pinned history', 'change-log input'])('VERSION-01: version bumps from %s', source => {
   const major = 'Breaking change: remove legacy API'
   const minor = 'Added new API'
   const patch = 'Fix: incorrect API response'
@@ -924,7 +1070,7 @@ describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from
     expect(octokit.rest.repos.createRelease).toHaveBeenCalledWith(expect.objectContaining({
       tag_name: `v${version}`, body: result.releaseNotes,
     }))
-    if (source === 'pinned file') {
+    if (source !== 'pinned history') {
       expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
     } else {
       expect(octokit.rest.repos.listCommits).toHaveBeenCalledWith(expect.objectContaining({
@@ -934,7 +1080,7 @@ describe.each(['pinned file', 'pinned history'])('VERSION-01: version bumps from
   })
 })
 
-describe.each(['pinned file', 'pinned history'])('STYLE-01: messages from %s', source => {
+describe.each(['pinned file', 'pinned history', 'change-log input'])('STYLE-01: messages from %s', source => {
   test.each([undefined, 'false'])('warns for every invalid summary and continues with style-check=%s', async strict => {
     if (strict !== undefined) inputs['style-check'] = strict
     setReleaseMessages(source, ['fix: Repair the parser.', 'deps: Update the parser.'])
@@ -996,7 +1142,7 @@ describe.each(['pinned file', 'pinned history'])('STYLE-01: messages from %s', s
     setReleaseMessages(source, ['docs: Explain why the API is no longer supported.'])
     expect((await semrelease()).result).toBe('SKIPPED')
     expect(warning).not.toHaveBeenCalled()
-    if (source === 'pinned file') expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
+    if (source !== 'pinned history') expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
     assertNoWrites()
   })
 })
@@ -1011,7 +1157,7 @@ test('STYLE-02: strict metadata checks ignore comments, directives and supported
   expect(octokit.rest.repos.listCommits).not.toHaveBeenCalled()
 })
 
-describe.each(['pinned file', 'pinned history'])('marker normalization from %s', source => {
+describe.each(['pinned file', 'pinned history', 'change-log input'])('marker normalization from %s', source => {
   test.each(['+ ', ' \t-+= '])('normalizes %j before type-based bumping and release-note generation', async prefix => {
     inputs['style-check'] = 'true'
     const message = 'fix(parser+): preserve C++ when the old API is removed'

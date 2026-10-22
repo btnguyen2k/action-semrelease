@@ -20,6 +20,14 @@ inputs:
     description: 'Commit SHA to release; defaults to the event SHA and must be a tip or ancestor of a configured branch'
     required: false
     default: ''
+  version:
+    description: 'Release version overriding the metadata file version and automatic version calculation; empty uses existing behavior'
+    required: false
+    default: ''
+  change-log:
+    description: 'Multiline change messages used to calculate version and release notes instead of metadata file messages or commit history'
+    required: false
+    default: ''
   tag-prefix:
     description: 'Prefix for version lookup and release tags, e.g. v for v1.2.3'
     required: false
