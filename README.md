@@ -50,7 +50,7 @@ Sample GitHub Actions workflows are available in the [samples](samples/) directo
 
 ## How it works
 
-This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. Messages in `.semrelease/this_release` take precedence over Git history; history is scanned only if the file is missing or contains no messages. The following screenshot illustrates the result:
+This Action analyzes commit messages to determine if a new release is needed, and if so, automatically calculates the next version number and creates a new release tag with release notes compiled from commit messages. A non-empty `change-log` input takes precedence over messages in `.semrelease/this_release` and Git history. History is scanned only when `change-log` is empty and the file is missing or contains no messages. The following screenshot illustrates the result:
 
 ![Releases and Tags](docs/semrelease-releases-and-tags.png)
 
@@ -64,7 +64,7 @@ A new patch version is released when only bug fixes, improvements/optimizations,
 
 When calculating the version automatically, the highest qualifying bump wins: **MAJOR > MINOR > PATCH**.
 
-Messages from GitHub history and `.semrelease/this_release` are normalized before release parsing: leading whitespace and `-`, `=`, or `+` markers are removed, and surrounding whitespace is trimmed. Markers inside the summary or body are preserved.
+Messages from `change-log`, GitHub history and `.semrelease/this_release` are normalized before release parsing: leading whitespace and `-`, `=`, or `+` markers are removed, and surrounding whitespace is trimmed. Markers inside the summary or body are preserved.
 
 For headers starting with `type:` or `type(scope):`, the **type alone** determines the bump and release-note category. For example, `fix: breaking change` produces PATCH; words such as "removed" in its scope, summary, body, or footer cannot promote it to MAJOR. Use a breaking type such as `breaking:` or `breaking change:` for a major release. `refactor:` remains MINOR.
 
@@ -180,7 +180,7 @@ with:
   style-check: true
 ```
 
-Checks apply to the selected repository commit messages or `.semrelease/this_release` entries. Metadata comments and version directives are ignored. Leading markers (`-`, `=`, or `+`) are stripped from metadata entries before validation, without trimming summary whitespace. Types use the existing case-insensitive release rules and aliases, including multiword types such as `breaking change`; scope names have no whitelist. Unknown types (such as `docs` or `chore`) and malformed type/scope headers produce no style warnings or failures, even in strict mode. Legacy bracketed or sentence-style messages are also skipped by the style checker. None of these eligibility checks changes the existing version-bump or release-note rules.
+Checks apply to the selected `change-log` entries, repository commit messages or `.semrelease/this_release` entries. Comments and version directives are ignored in `change-log` and metadata. Leading markers (`-`, `=`, or `+`) are stripped from these entries before validation, without trimming summary whitespace. Types use the existing case-insensitive release rules and aliases, including multiword types such as `breaking change`; scope names have no whitelist. Unknown types (such as `docs` or `chore`) and malformed type/scope headers produce no style warnings or failures, even in strict mode. Legacy bracketed or sentence-style messages are also skipped by the style checker. None of these eligibility checks changes the existing version-bump or release-note rules.
 
 ### Inputs and Outputs
 
@@ -201,6 +201,8 @@ The following inputs are accepted:
 | dry-run                       | No       | `false`         | If `true`, the Action will run in dry-run mode.                               |
 | style-check                   | No       | `false`         | Fail on invalid first-line summaries of recognized types when `true`; otherwise warn. |
 | target-sha                    | No       | Event SHA       | Commit SHA to release and read metadata from; must be reachable from a configured branch. |
+| version                       | No       | `''`            | Release version string overriding the metadata file's `#!VERSION` and automatic version calculation. |
+| change-log                    | No       | `''`            | Multiline change-message string parsed for version calculation and release notes; replaces file messages and disables commit-history scanning. |
 | tag-prefix                    | No       | `'v'`           | Prefix for release tags.                                                      |
 | tag-major-release             | No       | `false`         | If `true`, create or move the major-version alias, e.g. `v1`.                 |
 | tag-minor-release             | No       | `false`         | If `true`, create or move the minor-version alias, e.g. `v1.2`.               |
@@ -224,7 +226,22 @@ This Action outputs the following:
 
 ## Customizing Version Numbers and Commit Messages
 
-Create or edit `.semrelease/this_release` in the repository root, then commit and push it so it exists at `target-sha` (the event SHA by default). Local-only edits are not read.
+Use `version` and `change-log` to override release metadata directly:
+
+```yaml
+with:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+  version: '6.0.0'
+  change-log: |
+    feat: add a public API
+    fix: handle empty input
+```
+
+Both inputs are optional strings, defaulting to empty. They fall back independently: an empty `version` uses the file's `#!VERSION` or automatic versioning; an empty `change-log` uses file messages or, when the file has no messages, Git history. Whitespace-only inputs are treated as empty. When both are supplied, the metadata file is not read.
+
+`change-log` accepts one message per line in the same format as the metadata file, using the existing versioning and release-note rules rather than copying the text verbatim. A non-empty `change-log` never falls back to file messages or history, even if it contains only comments or unrecognized messages. Version directives inside `change-log` are ignored; set `version` or use the metadata file for the version.
+
+To supply metadata through a file instead, create or edit `.semrelease/this_release` in the repository root, then commit and push it so it exists at `target-sha` (the event SHA by default). Local-only edits are not read.
 
 Set a custom version with a `#!VERSION=<version>` line, without a list marker:
 
@@ -236,11 +253,11 @@ Set a custom version with a `#!VERSION=<version>` line, without a list marker:
 - fix: handle empty input
 ```
 
-This requests version `6.0.0` (`v6.0.0` with the default `tag-prefix`) instead of the automatic bump. Omit the directive for automatic versioning. Only one directive is allowed; malformed or duplicate directives and invalid versions fail. Full SemVer, including pre-releases and build metadata, is supported; shorthands `6` and `6.1` are normalized to `6.0.0` and `6.1.0`.
+This requests version `6.0.0` (`v6.0.0` with the default `tag-prefix`) instead of the automatic bump, unless overridden by the `version` input. Omit both for automatic versioning. When `version` is empty, only one directive is allowed; malformed or duplicate directives and invalid versions fail. When `version` is supplied, file version directives are ignored. Both version sources support full SemVer, including pre-releases and build metadata; shorthands `6` and `6.1` are normalized to `6.0.0` and `6.1.0`.
 
 Blank lines and ordinary `#` comments are ignored; `#!VERSION` is the directive exception. Leading whitespace and `-`, `=` or `+` markers are removed from message lines before parsing.
 
-Messages in the file replace history for version calculation and release notes. Unrecognized messages do not trigger fallback: if none qualify under the [versioning rules](#versioning-rules), the release is skipped, even with a forced version. History is used only when the file is absent or has no messages; any version directive is retained during this fallback, and history must still contain a qualifying message.
+When `change-log` is empty, messages in the file replace history for version calculation and release notes. Unrecognized messages do not trigger fallback: if none qualify under the [versioning rules](#versioning-rules), the release is skipped, even with a forced version. History is used only when `change-log` is empty and the file is absent or has no messages; any forced version is retained during this fallback, and history must still contain a qualifying message.
 
 ### Pre-release preparation and Post-release cleanup
 

@@ -132,7 +132,7 @@ async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scan
 
 /**
  * Convenience function to construct Option struct from inputs and environment variables.
- * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, isTagOnly: boolean, artifactIds: number[], artifactRunId: number|string, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[], styleCheck: boolean}}
+ * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, version: string, changeLog: string, isTagOnly: boolean, artifactIds: number[], artifactRunId: number|string, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[], styleCheck: boolean}}
  */
 function getOptions() {
   const inputDryRun = 'dry-run'
@@ -151,10 +151,13 @@ function getOptions() {
   const defaultPath = ''
 
   const isTagOnly = String(core.getInput(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
+  const changeLog = core.getInput('change-log', {trimWhitespace: false})
   return {
     isDryRun: optDryRun(),
     styleCheck: optStyleCheck(),
     targetSha: core.getInput('target-sha') || github.context.sha,
+    version: core.getInput('version'),
+    changeLog: changeLog.trim() === '' ? '' : changeLog,
     isTagMajorRelease: String(core.getInput(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true',
     isTagMinorRelease: String(core.getInput(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true',
     tagPrefix: String(core.getInput(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix),
