@@ -1,3 +1,6 @@
-# This file has been cleaned up post-releasing version 0.5.1.
+# This file has been cleaned up post-releasing version 5.0.0.
 # Generate its content quickly using the following command:
 #   git log origin..HEAD | grep "^\s" > .semrelease/this_release
+#!VERSION=5.1.0
+- feat(input): introduce optional input `version`
+- feat(input): introduce optional input `change-log`
