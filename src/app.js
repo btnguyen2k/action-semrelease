@@ -114,12 +114,21 @@ async function computeReleaseMeta(octokit, options) {
     core.warning(`⚠️ Commit message style: ${diagnostic}`)
   }
 
-  // firstly, try to load commit messages from .semrelease/this_release
-  core.info(`ℹ️ Try loading commit messages from file ${commitLogsFile}...`)
-  const releaseLines = await utils.readReleaseLinesAtCommit(octokit, options.targetSha)
-  const releaseOptions = await utils.getReleaseOptionsFromFile(commitLogsFile, releaseLines)
-  let commitMessages = await utils.loadCommitMessagesFromFile(commitLogsFile, releaseLines, checkStyle)
-  if (!commitMessages || commitMessages.length === 0) {
+  let releaseLines = null
+  if (!options.version || !options.changeLog) {
+    core.info(`ℹ️ Try loading release metadata from file ${commitLogsFile}...`)
+    releaseLines = await utils.readReleaseLinesAtCommit(octokit, options.targetSha)
+  }
+  const releaseOptions = options.version
+    ? {releaseVersion: utils.normalizeReleaseVersion(options.version).semver}
+    : await utils.getReleaseOptionsFromFile(commitLogsFile, releaseLines)
+  if (options.changeLog) core.info('ℹ️ Using commit messages from change-log input...')
+  let commitMessages = await utils.loadCommitMessagesFromFile(
+    commitLogsFile,
+    options.changeLog ? options.changeLog.split(/\r?\n/) : releaseLines,
+    checkStyle,
+  )
+  if (!options.changeLog && (!commitMessages || commitMessages.length === 0)) {
     // if the file does not exist or no commit messages found, load commit messages from GitHub repo
     core.info(`ℹ️ File ${commitLogsFile} does not exist or no commit messages found, loading commit messages from repo...`)
     core.info(`🕘 Fetching commits from branch <${options.branches}>...`)

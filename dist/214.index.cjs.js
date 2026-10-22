@@ -318,7 +318,7 @@ async function loadCommitMessagesFromRepo(octokit, filterCommits, branches, scan
 
 /**
  * Convenience function to construct Option struct from inputs and environment variables.
- * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, isTagOnly: boolean, artifactIds: number[], artifactRunId: number|string, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[], styleCheck: boolean}}
+ * @returns {{isTagMajorRelease: boolean, tagPrefix: string, targetSha: string, version: string, changeLog: string, isTagOnly: boolean, artifactIds: number[], artifactRunId: number|string, scanPath: string, isDryRun: *, isTagMinorRelease: boolean, branches: string[], styleCheck: boolean}}
  */
 function getOptions() {
   const inputDryRun = 'dry-run'
@@ -337,10 +337,13 @@ function getOptions() {
   const defaultPath = ''
 
   const isTagOnly = String(core/* getInput */.V4(inputTagOnly) || process.env['TAG_ONLY'] || defaultTagOnly).toLowerCase() === 'true'
+  const changeLog = core/* getInput */.V4('change-log', {trimWhitespace: false})
   return {
     isDryRun: optDryRun(),
     styleCheck: optStyleCheck(),
     targetSha: core/* getInput */.V4('target-sha') || lib_github/* context */._.sha,
+    version: core/* getInput */.V4('version'),
+    changeLog: changeLog.trim() === '' ? '' : changeLog,
     isTagMajorRelease: String(core/* getInput */.V4(inputTagMajorRelease) || defaultTagMajorRelease).toLowerCase() === 'true',
     isTagMinorRelease: String(core/* getInput */.V4(inputTagMinorRelease) || defaultTagMinorRelease).toLowerCase() === 'true',
     tagPrefix: String(core/* getInput */.V4(inputTagPrefix) || process.env['TAG_PREFIX'] || defaultTagPrefix),
@@ -1055,12 +1058,21 @@ async function computeReleaseMeta(octokit, options) {
     core/* warning */.$e(`⚠️ Commit message style: ${diagnostic}`)
   }
 
-  // firstly, try to load commit messages from .semrelease/this_release
-  core/* info */.pq(`ℹ️ Try loading commit messages from file ${commitLogsFile}...`)
-  const releaseLines = await readReleaseLinesAtCommit(octokit, options.targetSha)
-  const releaseOptions = await getReleaseOptionsFromFile(commitLogsFile, releaseLines)
-  let commitMessages = await loadCommitMessagesFromFile(commitLogsFile, releaseLines, checkStyle)
-  if (!commitMessages || commitMessages.length === 0) {
+  let releaseLines = null
+  if (!options.version || !options.changeLog) {
+    core/* info */.pq(`ℹ️ Try loading release metadata from file ${commitLogsFile}...`)
+    releaseLines = await readReleaseLinesAtCommit(octokit, options.targetSha)
+  }
+  const releaseOptions = options.version
+    ? {releaseVersion: normalizeReleaseVersion(options.version).semver}
+    : await getReleaseOptionsFromFile(commitLogsFile, releaseLines)
+  if (options.changeLog) core/* info */.pq('ℹ️ Using commit messages from change-log input...')
+  let commitMessages = await loadCommitMessagesFromFile(
+    commitLogsFile,
+    options.changeLog ? options.changeLog.split(/\r?\n/) : releaseLines,
+    checkStyle,
+  )
+  if (!options.changeLog && (!commitMessages || commitMessages.length === 0)) {
     // if the file does not exist or no commit messages found, load commit messages from GitHub repo
     core/* info */.pq(`ℹ️ File ${commitLogsFile} does not exist or no commit messages found, loading commit messages from repo...`)
     core/* info */.pq(`🕘 Fetching commits from branch <${options.branches}>...`)
